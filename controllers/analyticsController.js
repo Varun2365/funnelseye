@@ -4,7 +4,7 @@ const mongoose = require('mongoose');
 const ErrorResponse = require('../utils/errorResponse');
 const asyncHandler = require('../middleware/async');
 
-const Funnel = require('../Schema/Funnel');
+const Funnel = require('../schema/Funnel');
 const FunnelEvent = require('../schema/FunnelEvent.js');
 
 const getFunnelAnalytics = asyncHandler(async (req, res, next) => {

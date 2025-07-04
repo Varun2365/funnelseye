@@ -25,6 +25,7 @@ app.use(express.json()); // Enable parsing of JSON request bodies
 
 // 🔗 Mount API Routes
 // Note: Base paths are '/api' for consistency
+
 app.use('/api/auth', authRoutes);
 app.use('/api/funnels', funnelRoutes); // Mounting funnel routes with /api/funnels base
 app.use('/api/leads', leadRoutes);     // Mounting lead routes with /api/leads base

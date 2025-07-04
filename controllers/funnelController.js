@@ -1,15 +1,15 @@
 // D:\PRJ_YCT_Final\controllers\funnelController.js
 
-const Funnel = require('../Schema/Funnel');
-const User = require('../Schema/User');
+const Funnel = require('../schema/Funnel');
+const User = require('../schema/User');
 const ErrorResponse = require('../utils/errorResponse');
 const asyncHandler = require('../middleware/async');
 const FunnelEvent = require('../schema/FunnelEvent');
-const LandingPage = require('../Schema/Funnel Settings Schema/LandingPage');
-const Appointment = require('../Schema/Funnel Settings Schema/Appointment');
-const Thankyou = require('../Schema/Funnel Settings Schema/Thankyou');
-const VSL = require('../Schema/Funnel Settings Schema/VSL');
-const WACommunity = require('../Schema/Funnel Settings Schema/WACommunity');
+const LandingPage = require('../schema/Funnel Settings Schema/LandingPage');
+const Appointment = require('../schema/Funnel Settings Schema/Appointment');
+const Thankyou = require('../schema/Funnel Settings Schema/Thankyou');
+const VSL = require('../schema/Funnel Settings Schema/VSL');
+const WACommunity = require('../schema/Funnel Settings Schema/WACommunity');
 
 
 const stageModels = {

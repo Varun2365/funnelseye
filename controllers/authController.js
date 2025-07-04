@@ -1,5 +1,5 @@
 const bcrypt = require('bcryptjs');
-const User = require('../Schema/User'); // Ensure path is correct
+const User = require('../schema/User'); // Ensure path is correct
 const Otp = require('../schema/Otp');   // Ensure path is correct for your OTP model
 const nodemailer = require('nodemailer');
 const jwt = require('jsonwebtoken'); // You need this import here for JWT operations

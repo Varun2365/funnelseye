@@ -1,7 +1,7 @@
 // D:\PRJ_YCT_Final\controllers\leadController.js
 
-const Lead = require('../Schema/Lead');
-const Funnel = require('../Schema/Funnel');
+const Lead = require('../schema/Lead');
+const Funnel = require('../schema/Funnel');
 const ErrorResponse = require('../utils/errorResponse');
 const asyncHandler = require('../middleware/async');
 
