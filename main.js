@@ -32,14 +32,94 @@ app.use('/api/leads', leadRoutes);     // Mounting lead routes with /api/leads b
 
 // 🏠 Basic Root Route (for testing if server is running)
 app.get('/', (req, res) => {
-    res.send('🎉 FunnelsEye API is online and ready! 🎉');
+    res.send(`
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>FunnelsEye API Status</title>
+            <style>
+                body {
+                    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    min-height: 100vh;
+                    margin: 0;
+                    background-color: #f0f4f8; /* Light blue-gray background */
+                    color: #333;
+                    text-align: center;
+                    flex-direction: column;
+                }
+                .container {
+                    background-color: #ffffff;
+                    padding: 40px 60px;
+                    border-radius: 12px;
+                    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+                    transform: translateY(-20px);
+                    transition: transform 0.3s ease-in-out;
+                }
+                .container:hover {
+                    transform: translateY(-25px);
+                }
+                h1 {
+                    color: #2c3e50; /* Darker blue-gray */
+                    font-size: 2.8em;
+                    margin-bottom: 20px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                }
+                h1 .icon {
+                    font-size: 1.2em;
+                    margin-right: 15px;
+                    animation: bounce 1s infinite alternate;
+                }
+                p {
+                    font-size: 1.2em;
+                    color: #555;
+                    line-height: 1.6;
+                }
+                .api-link {
+                    margin-top: 30px;
+                    font-size: 1.1em;
+                }
+                .api-link a {
+                    color: #007bff;
+                    text-decoration: none;
+                    font-weight: bold;
+                    transition: color 0.3s ease;
+                }
+                .api-link a:hover {
+                    color: #0056b3;
+                    text-decoration: underline;
+                }
+                @keyframes bounce {
+                    from { transform: translateY(0); }
+                    to { transform: translateY(-10px); }
+                }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1><span class="icon">🚀</span> FunnelsEye API is Online! <span class="icon">✨</span></h1>
+                <p>Your API server is up and running perfectly.</p>
+                <p>Access your API endpoints securely.</p>
+                <div class="api-link">
+                    <p>Go to your API: <a href="https://api.funnelseye.com/api/auth/login">https://api.funnelseye.com/api/auth/login</a></p>
+                </div>
+            </div>
+        </body>
+        </html>
+    `);
 });
 
 // ⚠️ IMPORTANT: Error Handling Middleware
 
 
 // 🌍 Define Server Port
-const PORT = process.env.PORT || 8000;
+const PORT = process.env.PORT || 8080;
 
 
 // --- Helper function to print API routes in a formatted table ---
