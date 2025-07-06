@@ -9,12 +9,17 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@whiskeysockets/baileys": "^6.7.18",
     "bcryptjs": "^3.0.2",
-    "dotenv": "^17.0.0",
+    "dotenv": "^17.0.1",
     "express": "^5.1.0",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.16.0",
     "nodemailer": "^7.0.3",
-    "nodemon": "^3.1.10"
+    "nodemon": "^3.1.10",
+    "pino": "^9.7.0",
+    "qrcode-terminal": "^0.12.0",
+    "socket.io": "^4.8.1",
+    "twilio": "^5.7.2"
   }
 }

@@ -11,7 +11,7 @@ const LeadSchema = new mongoose.Schema({
     funnelId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Funnel',
-        required: [true, 'Lead must be associated with a funnel.']
+        // required: [true, 'Lead must be associated with a funnel.']
     },
     name: {
         type: String,
@@ -22,7 +22,7 @@ const LeadSchema = new mongoose.Schema({
     email: {
         type: String,
         required: [true, 'Please add an email'],
-        unique: false,
+        // unique: false,
         match: [
             /^(([^<>()[\]\\.,;:\s@"]+(\.[^<>()[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/,
             'Please add a valid email'
@@ -92,4 +92,5 @@ LeadSchema.index({ coachId: 1, funnelId: 1, email: 1 });
 LeadSchema.index({ coachId: 1, createdAt: -1 });
 LeadSchema.index({ coachId: 1, leadTemperature: 1, nextFollowUpAt: 1 }); // For efficient follow-up reminders
 
-module.exports = mongoose.model('Lead', LeadSchema);
+// New, correct way to prevent OverwriteModelError
+module.exports = mongoose.models.Lead || mongoose.model('Lead', LeadSchema);

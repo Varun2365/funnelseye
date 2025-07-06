@@ -1,34 +1,61 @@
-// D:\PRJ_YCT_Final\server.js
+// D:\PRJ_YCT_Final\main.js
 
 // 🚀 Load environment variables
 require('dotenv').config();
 
 // 📦 Core Node.js Modules
 const express = require('express');
+const http = require('http'); // Import http module for Socket.IO
+
+// 🌐 Socket.IO Imports
+const { Server } = require('socket.io'); // Socket.IO server
 
 // ⚙️ Configuration & Utilities
-const { connectDB } = require('./config/db');
+const {connectDB} = require('./config/db'); // Assuming connectDB is directly exported
+const whatsappManager = require('./services/whatsappManager'); // Import whatsappManager
 
 // 🛡️ Middleware Imports
-// const errorHandler = require('./middleware/errorMiddleware'); // Global error handler
+const cors = require('cors'); // Import CORS middleware
+// const errorHandler = require('./middleware/errorMiddleware'); // Global error handler - Uncomment if used
 
 // 🛣️ Route Imports
 const authRoutes = require('./routes/authRoutes');
 const funnelRoutes = require('./routes/funnelRoutes');
 const leadRoutes = require('./routes/leadRoutes.js');
+const coachWhatsAppRoutes = require('./routes/coachWhatsappRoutes.js');
 
 // 🌐 Initialize Express App
 const app = express();
+// Create an HTTP server from your Express app (required for Socket.IO)
+const server = http.createServer(app);
+
+// Initialize Socket.IO server
+const io = new Server(server, {
+    cors: {
+        origin: process.env.FRONTEND_URL || "http://localhost:3000", // IMPORTANT: Configure your frontend URL
+        methods: ["GET", "POST"]
+    }
+});
+
+// Pass the Socket.IO instance to the whatsappManager so it can emit events
+whatsappManager.setIoInstance(io);
 
 // ✨ Express Middleware Setup
 app.use(express.json()); // Enable parsing of JSON request bodies
+app.use(express.urlencoded({ extended: false })); // Enable parsing of URL-encoded request bodies (for forms)
+
+// Enable CORS for all routes (adjust options as needed for production)
+app.use(cors({
+    origin: process.env.FRONTEND_URL || "http://localhost:3000",
+    credentials: true // If you handle cookies or auth headers
+}));
+
 
 // 🔗 Mount API Routes
-// Note: Base paths are '/api' for consistency
-
 app.use('/api/auth', authRoutes);
-app.use('/api/funnels', funnelRoutes); // Mounting funnel routes with /api/funnels base
-app.use('/api/leads', leadRoutes);     // Mounting lead routes with /api/leads base
+app.use('/api/funnels', funnelRoutes);
+app.use('/api/leads', leadRoutes);
+app.use('/api/coach-whatsapp', coachWhatsAppRoutes);
 
 // 🏠 Basic Root Route (for testing if server is running)
 app.get('/', (req, res) => {
@@ -116,21 +143,21 @@ app.get('/', (req, res) => {
 });
 
 // ⚠️ IMPORTANT: Error Handling Middleware
-
+// app.use(errorHandler); // Uncomment if you have this in place
 
 // 🌍 Define Server Port
 const PORT = process.env.PORT || 8080;
 
 
 // --- Helper function to print API routes in a formatted table ---
-function printApiTable(title, routes, baseUrl) { // Removed 'port' parameter as it's no longer used for path construction
+function printApiTable(title, routes, baseUrl) {
     const METHOD_WIDTH = 8;
-    const PATH_WIDTH = 75; // Path width remains generous for complex routes
+    const PATH_WIDTH = 75;
     const DESC_WIDTH = 45;
 
-    const totalWidth = METHOD_WIDTH + PATH_WIDTH + DESC_WIDTH + 8; // Including padding and separators
+    const totalWidth = METHOD_WIDTH + PATH_WIDTH + DESC_WIDTH + 8;
 
-    const hr = '─'.repeat(totalWidth); // Horizontal rule
+    const hr = '─'.repeat(totalWidth);
 
     console.log(`\n\n${title}`);
     console.log(`╭${hr}╮`);
@@ -138,7 +165,6 @@ function printApiTable(title, routes, baseUrl) { // Removed 'port' parameter as 
     console.log(`├${'─'.repeat(METHOD_WIDTH)}─┼─${'─'.repeat(PATH_WIDTH)}─┼─${'─'.repeat(DESC_WIDTH)}─┤`);
 
     routes.forEach(route => {
-        // MODIFIED LINE: Construct path without http://localhost:{PORT}
         const fullPath = `${baseUrl}${route.path}`;
         const method = route.method.padEnd(METHOD_WIDTH);
         const path = fullPath.padEnd(PATH_WIDTH);
@@ -158,11 +184,11 @@ const startServer = async () => {
     try {
         await connectDB(); // Attempt to connect to MongoDB
 
-        // 🚀 Start the Express app
-        app.listen(PORT, () => {
+        // 🚀 Start the HTTP server (which Express is built on)
+        // This is crucial for Socket.IO to work alongside Express
+        server.listen(PORT, () => {
             console.log(`\n\n✨ Server is soaring on port ${PORT}! ✨`);
-            console.log(`Local Development Base URL: http://localhost:${PORT}/api`); // Added a clear base URL for reference
-
+            console.log(`Local Development Base URL: http://localhost:${PORT}/api`);
 
             // --- Define API Routes Data for Table Printing ---
             const authRoutesData = [
@@ -194,12 +220,23 @@ const startServer = async () => {
                 { method: 'POST', path: '/:id/followup', desc: 'Add Follow-up Note' },
                 { method: 'GET', path: '/followups/upcoming', desc: 'Get Leads for Upcoming Follow-ups' },
             ];
+            
+            // --- UPDATED: WhatsApp Routes Data for the table ---
+            const whatsappRoutesData = [
+                { method: 'GET', path: '/status', desc: 'Check WhatsApp connection status' },
+                { method: 'POST', path: '/add-device', desc: 'Initiate WhatsApp device linking (QR)' },
+                { method: 'GET', path: '/get-qr', desc: 'Retrieve WhatsApp QR code for linking' },
+                { method: 'POST', path: '/logout-device', desc: 'Disconnect WhatsApp device' },
+                { method: 'POST', path: '/send-message', desc: 'Send text message via WhatsApp' }, // NEW
+                { method: 'POST', path: '/send-media', desc: 'Send media message via WhatsApp' },   // NEW
+            ];
+
 
             // --- Print API Endpoints Tables ---
-            // Removed 'PORT' from printApiTable calls as it's no longer used for path
             printApiTable('--- 🔑 Authentication Endpoints ---', authRoutesData, '/api/auth');
             printApiTable('--- 📈 Funnel Management & Analytics Endpoints ---', funnelRoutesData, '/api/funnels');
             printApiTable('--- 🎯 Lead Management (CRM) Endpoints ---', leadRoutesData, '/api/leads');
+            printApiTable('--- 💬 Coach WhatsApp Integration Endpoints ---', whatsappRoutesData, '/api/coach-whatsapp');
 
             console.log('\n\n---------------------------------------\n\n');
 
