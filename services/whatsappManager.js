@@ -6,6 +6,7 @@ const {
     useMultiFileAuthState,
     DisconnectReason,
     fetchLatestBaileysVersion,
+    Browsers, // <-- Added Browsers utility import
 } = require('@whiskeysockets/baileys');
 const pino = require('pino'); // Baileys' logger
 const qrcode = require('qrcode-terminal'); // For displaying QR in console
@@ -207,7 +208,10 @@ async function initializeClient(coachId) {
         auth: state, // Authentication state for the client
         logger: logger, // Use the pino logger defined above
         printQRInTerminal: false, // We'll handle QR emitting via Socket.IO
-        browser: ['MyWhatsAppApp', 'Chrome', '1.0'], // Custom browser info sent to WhatsApp
+        // --- START OF CHANGE ---
+        // Changed client name from 'MyWhatsAppApp' to 'CoachConnect Dashboard'
+        browser: Browsers.appropriate("FunnelsEye"), // Custom browser info sent to WhatsApp
+        // --- END OF CHANGE ---
         version: version, // Ensure we use the fetched version
         // Add more options as needed, e.g., for history sync, presence
         syncFullHistory: true, // Fetch full message history on first connect
@@ -445,7 +449,7 @@ async function sendMediaMessage(coachId, recipientPhoneNumber, filePathOrUrl, ca
             } else if (/\.(mp3|aac|ogg|wav)$/i.test(filePathOrUrl)) {
                 messageContent = { audio: { url: filePathOrUrl, ptt: false } }; // ptt: true for voice note
             } else {
-                // For other files, treat as document (Baileys needs mimetype and filename)
+                // For other files, treat as document (Baileys needs mimetype and fileName)
                 messageContent = { document: { url: filePathOrUrl, mimetype: 'application/octet-stream', fileName: path.basename(filePathOrUrl) || 'document' } };
             }
         } else {
