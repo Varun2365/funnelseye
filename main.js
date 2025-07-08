@@ -9,7 +9,7 @@ const http = require('http'); // Import http module for Socket.IO
 
 // 🌐 Socket.IO Imports
 const { Server } = require('socket.io'); // Socket.IO server
-
+const { initAutomationProcessor } = require('./services/automationProcessor');
 // ⚙️ Configuration & Utilities
 const {connectDB} = require('./config/db'); // Assuming connectDB is directly exported
 const whatsappManager = require('./services/whatsappManager'); // Import whatsappManager
@@ -25,6 +25,8 @@ const leadRoutes = require('./routes/leadRoutes.js');
 const coachWhatsAppRoutes = require('./routes/coachWhatsappRoutes.js');
 
 // 🌐 Initialize Express App
+initAutomationProcessor();
+console.log('Funnelseye Automation Processor initialized.');
 const app = express();
 // Create an HTTP server from your Express app (required for Socket.IO)
 const server = http.createServer(app);

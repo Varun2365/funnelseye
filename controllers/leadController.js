@@ -2,8 +2,7 @@
 
 const Lead = require('../schema/Lead');
 const Funnel = require('../schema/Funnel');
-// Removed ErrorResponse as we're handling errors directly with res.status().json()
-// Removed asyncHandler as we're using try-catch blocks
+const funnelseyeEventEmitter = require('../services/eventEmitterService');
 
 // @desc    Create a new Lead
 // @route   POST /api/leads
@@ -22,14 +21,23 @@ const createLead = async (req, res) => {
         }
 
         const lead = await Lead.create(req.body);
+       
+        // --- NEW: Emit LEAD_CREATED event ---
+        funnelseyeEventEmitter.emit('LEAD_CREATED', {
+            leadId: lead._id,
+            leadData: lead.toObject(), // Convert Mongoose document to a plain JavaScript object
+            coachId: req.user.id,
+            funnelId: lead.funnelId
+        });
+
+        // --- END NEW ---
 
         res.status(201).json({
             success: true,
             data: lead
         });
     } catch (error) {
-        console.error("Error creating lead:", error); // Log the full error on the server
-        // Generic client-facing error message to avoid exposing internal details
+        console.error("Error creating lead:", error);
         if (error.name === 'ValidationError') {
             const messages = Object.values(error.errors).map(val => val.message);
             return res.status(400).json({
@@ -49,7 +57,7 @@ const createLead = async (req, res) => {
 // @access  Private (Coaches/Admins)
 const getLeads = async (req, res) => {
     try {
-        const coachId = req.user.id; // Assuming req.user.id is set by auth middleware
+        const coachId = req.user.id;
         let query;
 
         const reqQuery = { ...req.query };
@@ -145,7 +153,7 @@ const getLead = async (req, res) => {
         });
     } catch (error) {
         console.error("Error fetching single lead:", error);
-        if (error.name === 'CastError') { // Handle invalid MongoDB ID format
+        if (error.name === 'CastError') {
             return res.status(400).json({
                 success: false,
                 message: 'Invalid Lead ID format.'
@@ -163,24 +171,62 @@ const getLead = async (req, res) => {
 // @access  Private (Coaches/Admins)
 const updateLead = async (req, res) => {
     try {
-        let lead = await Lead.findOne({ _id: req.params.id, coachId: req.user.id });
+        // --- NEW: Fetch existing lead to compare values before update ---
+        const existingLead = await Lead.findOne({ _id: req.params.id, coachId: req.user.id });
 
-        if (!lead) {
+        if (!existingLead) {
             return res.status(404).json({
                 success: false,
                 message: `Lead not found or you do not own this lead.`
             });
         }
 
+        const oldStatus = existingLead.status;
+        const oldTemperature = existingLead.temperature;
+        const oldAssignedTo = existingLead.assignedTo ? existingLead.assignedTo.toString() : null; // Convert ObjectId to string for comparison
+
         // Perform the update
-        lead = await Lead.findByIdAndUpdate(req.params.id, req.body, {
+        const updatedLead = await Lead.findByIdAndUpdate(req.params.id, req.body, {
             new: true,
             runValidators: true
         });
 
+        // --- NEW: Emit events based on changes ---
+        if (updatedLead.status !== oldStatus) {
+            funnelseyeEventEmitter.emit('LEAD_STATUS_CHANGED', {
+                leadId: updatedLead._id,
+                leadData: updatedLead.toObject(),
+                oldStatus: oldStatus,
+                newStatus: updatedLead.status,
+                coachId: req.user.id
+            });
+        }
+
+        if (updatedLead.temperature !== oldTemperature) {
+            funnelseyeEventEmitter.emit('LEAD_TEMPERATURE_CHANGED', {
+                leadId: updatedLead._id,
+                leadData: updatedLead.toObject(),
+                oldTemperature: oldTemperature,
+                newTemperature: updatedLead.temperature,
+                coachId: req.user.id
+            });
+        }
+
+        const newAssignedTo = updatedLead.assignedTo ? updatedLead.assignedTo.toString() : null;
+        if (newAssignedTo && newAssignedTo !== oldAssignedTo) {
+             funnelseyeEventEmitter.emit('ASSIGN_LEAD_TO_COACH', {
+                leadId: updatedLead._id,
+                leadData: updatedLead.toObject(),
+                oldAssignedTo: oldAssignedTo,
+                newAssignedTo: newAssignedTo,
+                coachId: req.user.id // This is the coach who made the assignment
+            });
+        }
+        // --- END NEW ---
+
         res.status(200).json({
             success: true,
-            data: lead
+            data: updatedLead
         });
     } catch (error) {
         console.error("Error updating lead:", error);
@@ -279,7 +325,7 @@ const addFollowUpNote = async (req, res) => {
 // @access  Private (Coaches/Admins)
 const getUpcomingFollowUps = async (req, res) => {
     try {
-        const coachId = req.user.id; // Assuming req.user.id is set by auth middleware
+        const coachId = req.user.id;
         const days = parseInt(req.query.days, 10) || 7;
         const includeOverdue = req.query.includeOverdue === 'true';
 
