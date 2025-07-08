@@ -1,92 +1,186 @@
-// services/automationProcessor.js
-const funnelseyeEventEmitter = require('./eventEmitterService'); // Adjust path as needed
-const AutomationRule = require('../schema/AutomationRule'); // Adjust path as needed for your schema
+// D:\PRJ_YCT_Final\services\automationProcessor.js
+const funnelseyeEventEmitter = require('./eventEmitterService');
+const AutomationRule = require('../schema/AutomationRule'); // Needed to find rules
+const { sendCoachMessage, isClientConnected } = require('./whatsappManager'); // Your Baileys integration
+const { parseTemplateString } = require('../utils/templateParser'); // The utility we just created
+const Lead = require('../schema/Lead'); // Needed for UPDATE_LEAD_STATUS action
 
-// This function will be responsible for executing a single action
-// We'll expand on this in the next mini-goal (Mini-Goal 2.4.4)
+/**
+ * Executes a single automation action based on its type and configuration.
+ * This is where the actual work for each action (like sending a WhatsApp message) happens.
+ *
+ * @param {object} action - The action object from an AutomationRule (e.g., { type: 'SEND_WHATSAPP', config: { ... } }).
+ * @param {object} eventData - The full event payload that triggered the automation (e.g., { eventType: 'LEAD_CREATED', leadData: { ... }, coachId: '...' }).
+ */
 const executeAutomationAction = async (action, eventData) => {
-    console.log(`[AutomationProcessor] Preparing to execute action: ${action.type}`);
+    console.log(`\n[AutomationProcessor] Preparing to execute action: ${action.type}`);
     console.log(`[AutomationProcessor] Action config:`, action.config);
-    console.log(`[AutomationProcessor] Event data:`, eventData);
+    console.log(`[AutomationProcessor] Event data for context:`, eventData);
 
-    // TODO: In Mini-Goal 2.4.4, we will implement the actual logic for
-    // different action types (e.g., SEND_WHATSAPP_MESSAGE, CREATE_TASK).
-    // For now, this is a placeholder.
-    switch (action.type) {
-        case 'LEAD_CREATED':
-            console.log(`[AutomationProcessor] Simulating sending WhatsApp message for lead: ${eventData.leadData ? eventData.leadData.firstName : 'N/A'}`);
-            // Example of how you might pass data:
-            // const whatsappService = require('./whatsappService');
-            // await whatsappService.sendTemplateMessage(action.config.templateId, eventData.leadData.contactNumber, action.config.parameters, eventData);
-            break;
-        case 'CREATE_TASK':
-            console.log(`[AutomationProcessor] Simulating creating task for coach related to lead: ${eventData.leadId}`);
-            // Example:
-            // const taskService = require('./taskService');
-            // await taskService.createTask(action.config.description, action.config.assigneeId, eventData);
-            break;
-        case 'UPDATE_LEAD_STATUS':
-             console.log(`[AutomationProcessor] Simulating updating lead status to: ${action.config.newStatus} for lead: ${eventData.leadId}`);
-             // Example:
-             // const leadService = require('./leadService'); // careful to avoid circular dependency
-             // await leadService.updateLeadStatusDirectly(eventData.leadId, action.config.newStatus);
-            break;
-        // ... add more cases for other action types
-        default:
-            console.warn(`[AutomationProcessor] Unknown action type: ${action.type}. No action performed.`);
+    try {
+        switch (action.type) {
+            case 'SEND_WHATSAPP': // <-- CORRECTED: This now matches your schema enum
+                // Get the coachId from the eventData. This tells us which coach's WhatsApp to use.
+                const coachId = eventData.coachId;
+                if (!coachId) {
+                    console.warn(`[AutomationProcessor] SEND_WHATSAPP: No 'coachId' found in eventData. Cannot determine which WhatsApp client to use. Skipping.`);
+                    return;
+                }
+
+                // Check if the coach's Baileys client is currently connected and ready.
+                if (!isClientConnected(coachId)) {
+                    console.warn(`[AutomationProcessor] SEND_WHATSAPP: Coach ${coachId}'s WhatsApp client is not connected or ready. Skipping message sending.`);
+                    // You might want to log this as a higher priority or trigger an alert in a real system.
+                    return;
+                }
+
+                // Determine the recipient's phone number. 'recipientField' in config tells us where to find it.
+                // Assuming 'leadData' exists and contains the phone field, defaulting to 'phone'
+                const recipientPhoneField = action.config.recipientField || 'phone';
+                const recipientPhoneNumber = eventData.leadData ? eventData.leadData[recipientPhoneField] : null;
+
+                if (!recipientPhoneNumber) {
+                    console.warn(`[AutomationProcessor] SEND_WHATSAPP: No phone number found in leadData.${recipientPhoneField} for lead ID: ${eventData.leadId}. Skipping.`);
+                    return;
+                }
+
+                // Get the message body from the rule's config.
+                if (!action.config.message) { // Changed from messageBody to message as per recent config
+                    console.warn(`[AutomationProcessor] SEND_WHATSAPP: No 'message' defined in the automation rule's config for action type ${action.type}. Skipping.`);
+                    return;
+                }
+
+                // Use the templateParser to replace variables in the message content.
+                // It uses the full 'eventData' to resolve {{leadData.name}}, {{coachId}}, etc.
+                const messageContent = parseTemplateString(action.config.message, eventData);
+
+                console.log(`[AutomationProcessor] Attempting to send WhatsApp message via Baileys for coach ${coachId} to ${recipientPhoneNumber}: "${messageContent}"`);
+                // Call the function from your whatsappManager to send the message.
+                await sendCoachMessage(coachId, recipientPhoneNumber, messageContent);
+                console.log(`[AutomationProcessor] Successfully sent WhatsApp message for coach ${coachId} to ${recipientPhoneNumber}.`);
+                break;
+
+            case 'CREATE_TASK':
+                console.log(`[AutomationProcessor] Simulating creating task for lead: ${eventData.leadId}`);
+                // Placeholder: In a real application, you'd add logic here to create a task in your database.
+                // This would typically involve:
+                // - Importing your Task model or a Task service.
+                // - Extracting details like `taskTitle`, `description`, `assigneeId`, `priority` from `action.config`.
+                // - Using `parseTemplateString` for dynamic task descriptions.
+                // - Saving the new task to your database.
+                break;
+
+            case 'UPDATE_LEAD_STATUS':
+                console.log(`[AutomationProcessor] Attempting to update lead status for lead: ${eventData.leadId}`);
+                if (!eventData.leadId || !action.config.newStatus) {
+                    console.warn(`[AutomationProcessor] UPDATE_LEAD_STATUS: Missing leadId in eventData or 'newStatus' in action config. Skipping.`);
+                    return;
+                }
+                try {
+                    const updatedLead = await Lead.findByIdAndUpdate(
+                        eventData.leadId,
+                        { status: action.config.newStatus },
+                        { new: true, runValidators: true } // 'new: true' returns the updated doc; 'runValidators' ensures schema validation
+                    );
+                    if (updatedLead) {
+                        console.log(`[AutomationProcessor] Successfully updated lead ${eventData.leadId} status to "${action.config.newStatus}".`);
+                        // If this update itself should trigger other automations, you'd emit another event here:
+                        // funnelseyeEventEmitter.emit('trigger', {
+                        //     eventType: 'LEAD_STATUS_CHANGED',
+                        //     leadId: updatedLead._id.toString(),
+                        //     leadData: updatedLead.toObject(),
+                        //     coachId: updatedLead.coachId.toString(),
+                        //     previousStatus: eventData.leadData.status // Pass previous status if known
+                        // });
+                    } else {
+                        console.warn(`[AutomationProcessor] UPDATE_LEAD_STATUS: Lead with ID ${eventData.leadId} not found. Status not updated.`);
+                    }
+                } catch (updateError) {
+                    console.error(`[AutomationProcessor] Error updating lead status for ${eventData.leadId}:`, updateError.message);
+                }
+                break;
+
+            case 'CREATE_EMAIL_MESSAGE':
+                console.log(`[AutomationProcessor] Simulating sending email for lead: ${eventData.leadId}`);
+                // Placeholder: Implement email sending integration here (e.g., using Nodemailer, SendGrid, Mailgun).
+                break;
+
+            case 'CREATE_SMS_MESSAGE':
+                console.log(`[AutomationProcessor] Simulating sending SMS for lead: ${eventData.leadId}`);
+                // Placeholder: Implement SMS sending integration here (e.g., using Twilio, MessageBird).
+                break;
+
+            case 'ASSIGN_LEAD_TO_COACH':
+                console.log(`[AutomationProcessor] Simulating assigning lead ${eventData.leadId} to coach ${action.config.newCoachId}`);
+                // Placeholder: Logic to update the lead's assigned coach.
+                break;
+
+            default:
+                console.warn(`[AutomationProcessor] Unknown action type: ${action.type}. No action performed.`);
+        }
+    } catch (error) {
+        console.error(`[AutomationProcessor] CRITICAL ERROR executing action ${action.type} for eventType ${eventData.eventType} (Lead ID: ${eventData.leadId}):`, error);
+        // This is a crucial point for error handling in a production system.
+        // You'd typically log this error to an external service (Sentry, New Relic)
+        // and possibly send an alert to an administrator.
     }
 };
 
-// This is the main function that listens for events and processes rules
+/**
+ * Initializes the automation processor. This function sets up the event listener
+ * that will react to events emitted by other parts of your application.
+ */
 const initAutomationProcessor = () => {
-    // Listen for all events that might be triggers
-    // We use a wildcard listener for demonstration, but you could attach to specific events
-    // funnelseyeEventEmitter.on('LEAD_CREATED', async (eventData) => { ... });
-    // funnelseyeEventEmitter.on('FORM_SUBMITTED', async (eventData) => { ... });
-    // ... or a single listener for all with eventName as first arg
+    console.log('[AutomationProcessor] Initializing. Listening for generic "trigger" events...');
 
-    console.log('[AutomationProcessor] Initializing and listening for events...');
+    // The 'trigger' event is designed as a universal entry point for all automations.
+    // When any part of your app emits 'trigger' with an eventType, this listener activates.
+    funnelseyeEventEmitter.on('trigger', async (payload) => {
+        const eventName = payload.eventType; // e.g., 'LEAD_CREATED', 'LEAD_STATUS_CHANGED'
+        const eventData = payload; // This is the full context data passed with the event
 
-    // The 'eventName' will be the first argument passed by .emit()
-    funnelseyeEventEmitter.on('LEAD_CREATED', async (eventName, eventData) => { // Using a simple pattern to catch all events
-        console.log(`[AutomationProcessor] Event received: ${eventName}`);
-        // console.log('Event Data:', eventData); // Uncomment for detailed debugging
+        if (!eventName) {
+            console.warn('[AutomationProcessor] Received a "trigger" event without an "eventType" field in its payload. Skipping.');
+            return;
+        }
+
+        console.log(`\n[AutomationProcessor] Generic 'trigger' event received. Specific eventType: ${eventName}`);
 
         try {
-            // Find active automation rules that match the emitted event
+            // Find all active automation rules that are configured to trigger on this specific eventName.
             const matchingRules = await AutomationRule.find({
                 triggerEvent: eventName,
-                isActive: true
+                isActive: true // Only process active rules
             });
 
             if (matchingRules.length === 0) {
-                console.log(`[AutomationProcessor] No active automation rules found for event: ${eventName}`);
+                console.log(`[AutomationProcessor] No active automation rules found for eventType: ${eventName}`);
                 return;
             }
 
-            console.log(`[AutomationProcessor] Found ${matchingRules.length} matching rules for event: ${eventName}`);
+            console.log(`[AutomationProcessor] Found ${matchingRules.length} matching rules for eventType: ${eventName}`);
 
-            // Process each matching rule
+            // Iterate through each rule that matches the triggered event.
             for (const rule of matchingRules) {
-                console.log(`[AutomationProcessor] Processing Rule: "${rule.name}"`);
+                console.log(`[AutomationProcessor] Processing Rule: "${rule.name}" (ID: ${rule._id})`);
 
-                // TODO: Add logic here for 'conditions' if you implement them in schema
-                // For now, it proceeds directly to actions
+                // TODO: (Future Enhancement) Implement 'conditions' evaluation here.
+                // If your AutomationRule schema has a 'conditions' field, you'd evaluate them here.
+                // If conditions are not met, you would 'continue' to the next rule.
+                // Example: if (!evaluateConditions(rule.conditions, eventData)) { console.log('Rule conditions not met. Skipping rule.'); continue; }
 
-                // Execute each action defined in the rule
+                // For each matching rule, execute all its defined actions.
                 for (const action of rule.actions) {
-                    await executeAutomationAction(action, eventData); // Pass eventData for action configuration
+                    await executeAutomationAction(action, eventData);
                 }
+                console.log(`[AutomationProcessor] Finished processing Rule: "${rule.name}".`);
             }
         } catch (error) {
-            console.error(`[AutomationProcessor] Error processing automation for event ${eventName}:`, error);
+            console.error(`[AutomationProcessor] CRITICAL ERROR during automation rule processing for eventType ${eventName}:`, error);
         }
     });
 
-    // Special listener for all events for debugging (optional)
-    // funnelseyeEventEmitter.on('newListener', (event, listener) => {
-    //     console.log(`Event Listener Added: ${event}`);
-    // });
+    console.log(`[AutomationProcessor] Automation processor is ready to process events.`);
 };
 
 module.exports = {

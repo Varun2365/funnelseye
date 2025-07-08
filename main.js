@@ -9,9 +9,10 @@ const http = require('http'); // Import http module for Socket.IO
 
 // 🌐 Socket.IO Imports
 const { Server } = require('socket.io'); // Socket.IO server
-const { initAutomationProcessor } = require('./services/automationProcessor');
+
 // ⚙️ Configuration & Utilities
-const {connectDB} = require('./config/db'); // Assuming connectDB is directly exported
+const { connectDB } = require('./config/db'); // Assuming connectDB is directly exported
+const { initAutomationProcessor } = require('./services/automationProcessor'); // Your automation brain
 const whatsappManager = require('./services/whatsappManager'); // Import whatsappManager
 
 // 🛡️ Middleware Imports
@@ -23,10 +24,14 @@ const authRoutes = require('./routes/authRoutes');
 const funnelRoutes = require('./routes/funnelRoutes');
 const leadRoutes = require('./routes/leadRoutes.js');
 const coachWhatsAppRoutes = require('./routes/coachWhatsappRoutes.js');
+const automationRuleRoutes = require('./routes/automationRuleRoutes.js'); // <-- NEW: Automation Rule Routes
 
 // 🌐 Initialize Express App
+// IMPORTANT: Initialize automation processor before starting the server
+// so it's ready to listen for events immediately.
 initAutomationProcessor();
 console.log('Funnelseye Automation Processor initialized.');
+
 const app = express();
 // Create an HTTP server from your Express app (required for Socket.IO)
 const server = http.createServer(app);
@@ -58,6 +63,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/funnels', funnelRoutes);
 app.use('/api/leads', leadRoutes);
 app.use('/api/coach-whatsapp', coachWhatsAppRoutes);
+app.use('/api/automation-rules', automationRuleRoutes); // <-- NEW: Mount Automation Rule Routes
 
 // 🏠 Basic Root Route (for testing if server is running)
 app.get('/', (req, res) => {
@@ -205,7 +211,7 @@ const startServer = async () => {
                 { method: 'GET', path: '/coach/:coachId/funnels/:funnelId', desc: 'Get Single Funnel Details' },
                 { method: 'POST', path: '/coach/:coachId/funnels', desc: 'Create New Funnel' },
                 { method: 'PUT', path: '/coach/:coachId/funnels/:funnelId', desc: 'Update Funnel' },
-                { method: 'DELETE', path: '/coach/:coachId/funnels/:funnelId', desc: 'Delete Funnel' },
+                { method: 'DELETE', path: '/coach/:coachId/funnel/:funnelId', desc: 'Delete Funnel' },
                 { method: 'GET', path: '/coach/:coachId/funnels/:funnelId/stages/:stageType', desc: 'Get Stages by Type' },
                 { method: 'POST', path: '/:funnelId/stages', desc: 'Add Stage to Funnel' },
                 { method: 'PUT', path: '/:funnelId/stages/:stageSettingsId', desc: 'Update Stage Settings' },
@@ -222,15 +228,21 @@ const startServer = async () => {
                 { method: 'POST', path: '/:id/followup', desc: 'Add Follow-up Note' },
                 { method: 'GET', path: '/followups/upcoming', desc: 'Get Leads for Upcoming Follow-ups' },
             ];
-            
+
+            // --- NEW: Automation Rules Routes Data for the table ---
+            const automationRuleRoutesData = [
+                { method: 'POST', path: '', desc: 'Create New Automation Rule' },
+                // Add more if you implement GET, PUT, DELETE for rules in automationRuleController.js
+            ];
+
             // --- UPDATED: WhatsApp Routes Data for the table ---
             const whatsappRoutesData = [
                 { method: 'GET', path: '/status', desc: 'Check WhatsApp connection status' },
                 { method: 'POST', path: '/add-device', desc: 'Initiate WhatsApp device linking (QR)' },
                 { method: 'GET', path: '/get-qr', desc: 'Retrieve WhatsApp QR code for linking' },
                 { method: 'POST', path: '/logout-device', desc: 'Disconnect WhatsApp device' },
-                { method: 'POST', path: '/send-message', desc: 'Send text message via WhatsApp' }, // NEW
-                { method: 'POST', path: '/send-media', desc: 'Send media message via WhatsApp' },   // NEW
+                { method: 'POST', path: '/send-message', desc: 'Send text message via WhatsApp' },
+                { method: 'POST', path: '/send-media', desc: 'Send media message via WhatsApp' },
             ];
 
 
@@ -238,6 +250,7 @@ const startServer = async () => {
             printApiTable('--- 🔑 Authentication Endpoints ---', authRoutesData, '/api/auth');
             printApiTable('--- 📈 Funnel Management & Analytics Endpoints ---', funnelRoutesData, '/api/funnels');
             printApiTable('--- 🎯 Lead Management (CRM) Endpoints ---', leadRoutesData, '/api/leads');
+            printApiTable('--- ⚙️ Automation Rules Endpoints ---', automationRuleRoutesData, '/api/automation-rules'); // <-- NEW PRINT CALL
             printApiTable('--- 💬 Coach WhatsApp Integration Endpoints ---', whatsappRoutesData, '/api/coach-whatsapp');
 
             console.log('\n\n---------------------------------------\n\n');

@@ -21,16 +21,17 @@ const createLead = async (req, res) => {
         }
 
         const lead = await Lead.create(req.body);
-       
-        // --- NEW: Emit LEAD_CREATED event ---
-        funnelseyeEventEmitter.emit('LEAD_CREATED', {
+
+        // --- UPDATED: Emit generic 'trigger' event with eventType in payload ---
+        funnelseyeEventEmitter.emit('trigger', {
+            eventType: 'LEAD_CREATED', // <-- The actual event type
             leadId: lead._id,
             leadData: lead.toObject(), // Convert Mongoose document to a plain JavaScript object
             coachId: req.user.id,
-            funnelId: lead.funnelId
+            funnelId: lead.funnelId,
+            timestamp: new Date().toISOString() // Add timestamp for consistency
         });
-
-        // --- END NEW ---
+        // --- END UPDATED ---
 
         res.status(201).json({
             success: true,
@@ -191,38 +192,44 @@ const updateLead = async (req, res) => {
             runValidators: true
         });
 
-        // --- NEW: Emit events based on changes ---
+        // --- UPDATED: Emit generic 'trigger' events based on changes ---
         if (updatedLead.status !== oldStatus) {
-            funnelseyeEventEmitter.emit('LEAD_STATUS_CHANGED', {
+            funnelseyeEventEmitter.emit('trigger', {
+                eventType: 'LEAD_STATUS_CHANGED', // <-- The actual event type
                 leadId: updatedLead._id,
                 leadData: updatedLead.toObject(),
                 oldStatus: oldStatus,
                 newStatus: updatedLead.status,
-                coachId: req.user.id
+                coachId: req.user.id,
+                timestamp: new Date().toISOString()
             });
         }
 
         if (updatedLead.temperature !== oldTemperature) {
-            funnelseyeEventEmitter.emit('LEAD_TEMPERATURE_CHANGED', {
+            funnelseyeEventEmitter.emit('trigger', {
+                eventType: 'LEAD_TEMPERATURE_CHANGED', // <-- The actual event type
                 leadId: updatedLead._id,
                 leadData: updatedLead.toObject(),
                 oldTemperature: oldTemperature,
                 newTemperature: updatedLead.temperature,
-                coachId: req.user.id
+                coachId: req.user.id,
+                timestamp: new Date().toISOString()
             });
         }
 
         const newAssignedTo = updatedLead.assignedTo ? updatedLead.assignedTo.toString() : null;
         if (newAssignedTo && newAssignedTo !== oldAssignedTo) {
-             funnelseyeEventEmitter.emit('ASSIGN_LEAD_TO_COACH', {
+            funnelseyeEventEmitter.emit('trigger', {
+                eventType: 'ASSIGN_LEAD_TO_COACH', // <-- The actual event type
                 leadId: updatedLead._id,
                 leadData: updatedLead.toObject(),
                 oldAssignedTo: oldAssignedTo,
                 newAssignedTo: newAssignedTo,
-                coachId: req.user.id // This is the coach who made the assignment
+                coachId: req.user.id, // This is the coach who made the assignment
+                timestamp: new Date().toISOString()
             });
         }
-        // --- END NEW ---
+        // --- END UPDATED ---
 
         res.status(200).json({
             success: true,
@@ -273,6 +280,9 @@ const addFollowUpNote = async (req, res) => {
             });
         }
 
+        // --- NEW: Check if nextFollowUpAt is changing to emit event ---
+        const oldNextFollowUpAt = lead.nextFollowUpAt ? lead.nextFollowUpAt.toISOString() : null; // Store as ISO string for comparison
+        
         lead.followUpHistory.push({
             note: note,
             createdBy: req.user.id,
@@ -300,6 +310,21 @@ const addFollowUpNote = async (req, res) => {
             .populate('funnelId', 'name')
             .populate('assignedTo', 'name')
             .populate('followUpHistory.createdBy', 'name');
+
+        // --- NEW: Emit event if nextFollowUpAt changed ---
+        const newNextFollowUpAt = lead.nextFollowUpAt ? lead.nextFollowUpAt.toISOString() : null;
+        if (newNextFollowUpAt !== oldNextFollowUpAt) {
+             funnelseyeEventEmitter.emit('trigger', {
+                eventType: 'LEAD_FOLLOWUP_SCHEDULED_OR_UPDATED', // New event type
+                leadId: lead._id,
+                leadData: lead.toObject(),
+                oldNextFollowUpAt: oldNextFollowUpAt,
+                newNextFollowUpAt: newNextFollowUpAt,
+                coachId: req.user.id,
+                timestamp: new Date().toISOString()
+            });
+        }
+        // --- END NEW ---
 
         res.status(200).json({
             success: true,
@@ -379,6 +404,15 @@ const deleteLead = async (req, res) => {
         }
 
         await lead.deleteOne();
+
+        // --- NEW: Emit LEAD_DELETED event ---
+        funnelseyeEventEmitter.emit('trigger', {
+            eventType: 'LEAD_DELETED', // <-- The actual event type
+            leadId: lead._id,
+            coachId: req.user.id,
+            timestamp: new Date().toISOString()
+        });
+        // --- END NEW ---
 
         res.status(200).json({
             success: true,

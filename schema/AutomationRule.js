@@ -6,7 +6,7 @@ const AutomationActionSchema = new mongoose.Schema({
         type: String,
         required: true,
         enum: [
-            'SEND_WHATSAPP_MESSAGE',
+            'SEND_WHATSAPP',
             'CREATE_EMAIL_MESSAGE',
             'CREATE_SMS_MESSAGE',
             'CREATE_TASK',
