@@ -26,12 +26,7 @@ router.delete('/coach/:coachId/funnels/:funnelId', protect, authorizeCoach(), fu
 
 // Route to get funnel stages by type
 // This route will now filter the embedded stages directly
-router.get(
-    '/coach/:coachId/funnels/:funnelId/stages/:stageType',
-    protect,
-    authorizeCoach(),
-    funnelController.getFunnelStagesByType
-);
+
 
 // Route to add a new stage to a funnel
 // This expects the FULL stage object in the request body
