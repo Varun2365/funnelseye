@@ -6,6 +6,7 @@ require('dotenv').config();
 // 📦 Core Node.js Modules
 const express = require('express');
 const http = require('http'); // Import http module for Socket.IO
+const path = require('path'); // NEW: Import path module for serving static files
 
 // 🌐 Socket.IO Imports
 const { Server } = require('socket.io'); // Socket.IO server
@@ -24,7 +25,8 @@ const authRoutes = require('./routes/authRoutes');
 const funnelRoutes = require('./routes/funnelRoutes');
 const leadRoutes = require('./routes/leadRoutes.js');
 const coachWhatsAppRoutes = require('./routes/coachWhatsappRoutes.js');
-const automationRuleRoutes = require('./routes/automationRuleRoutes.js'); // <-- NEW: Automation Rule Routes
+const automationRuleRoutes = require('./routes/automationRuleRoutes.js');
+const uploadRoutes = require('./routes/uploadRoutes'); // <--- NEW: Upload Routes
 
 // 🌐 Initialize Express App
 // IMPORTANT: Initialize automation processor before starting the server
@@ -53,9 +55,14 @@ app.use(express.urlencoded({ extended: false })); // Enable parsing of URL-encod
 
 // Enable CORS for all routes (adjust options as needed for production)
 app.use(cors({
-    origin: process.env.FRONTEND_URL || "http://localhost:3000",
-    credentials: true // If you handle cookies or auth headers
+origin: '*', // Temporarily allow all origins, including 'null' for file:///
+methods: ['GET', 'POST', 'PUT', 'DELETE'], // Be explicit about allowed methods
+credentials: true // If you handle cookies or auth headers
 }));
+
+// --- NEW: Serve Static Files for Uploads ---
+// This line makes files located in the 'public/uploads' directory accessible via '/uploads' URL path.
+app.use('/uploads', express.static(path.join(__dirname, 'public/uploads')));
 
 
 // 🔗 Mount API Routes
@@ -63,7 +70,9 @@ app.use('/api/auth', authRoutes);
 app.use('/api/funnels', funnelRoutes);
 app.use('/api/leads', leadRoutes);
 app.use('/api/coach-whatsapp', coachWhatsAppRoutes);
-app.use('/api/automation-rules', automationRuleRoutes); // <-- NEW: Mount Automation Rule Routes
+app.use('/api/automation-rules', automationRuleRoutes);
+app.use('/api/files', uploadRoutes); // <--- NEW: Mount Upload Routes, using /api/files as base
+
 
 // 🏠 Basic Root Route (for testing if server is running)
 app.get('/', (req, res) => {
@@ -229,13 +238,11 @@ const startServer = async () => {
                 { method: 'GET', path: '/followups/upcoming', desc: 'Get Leads for Upcoming Follow-ups' },
             ];
 
-            // --- NEW: Automation Rules Routes Data for the table ---
             const automationRuleRoutesData = [
                 { method: 'POST', path: '', desc: 'Create New Automation Rule' },
                 // Add more if you implement GET, PUT, DELETE for rules in automationRuleController.js
             ];
 
-            // --- UPDATED: WhatsApp Routes Data for the table ---
             const whatsappRoutesData = [
                 { method: 'GET', path: '/status', desc: 'Check WhatsApp connection status' },
                 { method: 'POST', path: '/add-device', desc: 'Initiate WhatsApp device linking (QR)' },
@@ -245,13 +252,19 @@ const startServer = async () => {
                 { method: 'POST', path: '/send-media', desc: 'Send media message via WhatsApp' },
             ];
 
+            // --- NEW: Upload Routes Data for the table ---
+            const uploadRoutesData = [
+                { method: 'POST', path: '/upload', desc: 'Upload a file (PDF, Doc, Video, Audio)' },
+                // Add more if you implement GET, DELETE for files
+            ];
 
             // --- Print API Endpoints Tables ---
             printApiTable('--- 🔑 Authentication Endpoints ---', authRoutesData, '/api/auth');
             printApiTable('--- 📈 Funnel Management & Analytics Endpoints ---', funnelRoutesData, '/api/funnels');
             printApiTable('--- 🎯 Lead Management (CRM) Endpoints ---', leadRoutesData, '/api/leads');
-            printApiTable('--- ⚙️ Automation Rules Endpoints ---', automationRuleRoutesData, '/api/automation-rules'); // <-- NEW PRINT CALL
+            printApiTable('--- ⚙️ Automation Rules Endpoints ---', automationRuleRoutesData, '/api/automation-rules');
             printApiTable('--- 💬 Coach WhatsApp Integration Endpoints ---', whatsappRoutesData, '/api/coach-whatsapp');
+            printApiTable('--- 📁 File Upload Endpoints ---', uploadRoutesData, '/api/files'); // <--- NEW PRINT CALL
 
             console.log('\n\n---------------------------------------\n\n');
 

@@ -49,12 +49,6 @@ const AutomationRuleSchema = new mongoose.Schema({
             // ... and any other events you listed previously or find in your document
         ]
     },
-    // Optional: Add conditions here if you need more complex trigger logic beyond just the event type.
-    // For example: { "field": "lead.source", "operator": "eq", "value": "Facebook Ad" }
-    // conditions: {
-    //     type: mongoose.Schema.Types.Mixed,
-    //     default: {}
-    // },
     actions: { // Array of actions to execute when the rule triggers
         type: [AutomationActionSchema],
         required: true,

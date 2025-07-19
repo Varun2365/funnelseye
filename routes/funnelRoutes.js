@@ -1,43 +1,31 @@
-// D:\PRJ_YCT_Final\routes\funnels.js
+// D:\PRJ_YCT_Final\routes\funnelRoutes.js
 
 const express = require('express');
 const router = express.Router();
-const funnelController = require('../controllers/funnelController'); // Import the controller
-const { protect, authorizeCoach } = require('../middleware/auth'); // Import your auth middleware
+const funnelController = require('../controllers/funnelController');
+const { protect, authorizeCoach } = require('../middleware/auth');
 const { getFunnelAnalytics } = require('../controllers/analyticsController');
+
+// All existing routes remain largely the same in their definitions.
+// The key change is how `stageSettingsId` parameter is interpreted/used.
+
 // Route to get all funnels for a specific coach
-// GET /api/coach/:coachId/funnels
-// Params: URL -> :coachId
-// Middleware adds: req.coachId (authenticated user ID), req.role (authenticated user role)
 router.get('/coach/:coachId/funnels', protect, authorizeCoach(), funnelController.getFunnelsByCoachId);
 
 // Route to get a specific funnel by ID
-// GET /api/coach/:coachId/funnels/:funnelId
-// Params: URL -> :coachId, :funnelId
-// Middleware adds: req.coachId, req.role
 router.get('/coach/:coachId/funnels/:funnelId', protect, authorizeCoach(), funnelController.getFunnelById);
 
 // Route to create a new funnel
-// POST /api/coach/:coachId/funnels
-// Params: URL -> :coachId
-// Body: JSON object with funnel details (e.g., name, description, stages)
-// Middleware adds: req.coachId, req.role
 router.post('/coach/:coachId/funnels', protect, authorizeCoach(), funnelController.createFunnel);
 
 // Route to update an existing funnel
-// PUT /api/coach/:coachId/funnels/:funnelId
-// Params: URL -> :coachId, :funnelId
-// Body: JSON object with fields to update (e.g., name, description)
-// Middleware adds: req.coachId, req.role
 router.put('/coach/:coachId/funnels/:funnelId', protect, authorizeCoach(), funnelController.updateFunnel);
 
 // Route to delete a funnel
-// DELETE /api/coach/:coachId/funnels/:funnelId
-// Params: URL -> :coachId, :funnelId
-// Middleware adds: req.coachId, req.role
 router.delete('/coach/:coachId/funnels/:funnelId', protect, authorizeCoach(), funnelController.deleteFunnel);
 
-
+// Route to get funnel stages by type
+// This route will now filter the embedded stages directly
 router.get(
     '/coach/:coachId/funnels/:funnelId/stages/:stageType',
     protect,
@@ -45,31 +33,29 @@ router.get(
     funnelController.getFunnelStagesByType
 );
 
-
+// Route to add a new stage to a funnel
+// This expects the FULL stage object in the request body
 router.post(
     '/:funnelId/stages',
-    protect,        // Ensures user is authenticated
+    protect,
     authorizeCoach(),
     funnelController.addStageToFunnel
 );
 
-// PUT /api/funnels/:funnelId/stages/:stageSettingsId
-// Edits properties (name, order, isEnabled) of a stage WITHIN the funnel's sequence.
+// PUT /api/funnels/:funnelId/stages/:stageId
+// Edits properties (name, order, isEnabled, HTML, CSS, etc.) of a stage WITHIN the funnel.
+// `:stageId` here refers to the MongoDB `_id` of the embedded stage subdocument.
 router.put(
-    '/:funnelId/stages/:stageSettingsId',
+    '/:funnelId/stages/:stageId', // Changed from `:stageSettingsId` to `:stageId` for clarity
     protect,
     authorizeCoach(),
     funnelController.editFunnelStage
 );
 
-// @desc    Track a funnel event
-// @route   POST /api/funnels/track
-// @access  Public (no authentication needed as guest users will also generate events)
-router.post('/track', funnelController.trackFunnelEvent); 
+// Track a funnel event (no changes needed here as it deals with FunnelEvent schema)
+router.post('/track', funnelController.trackFunnelEvent);
 
-// @desc    Get analytics for a specific funnel
-// @route   GET /api/funnels/:funnelId/analytics
-// @access  Private (only authorized coaches can view their funnel analytics)
+// Get analytics for a specific funnel (no changes to this route definition)
 router.get('/:funnelId/analytics', protect, authorizeCoach(), getFunnelAnalytics);
 
 module.exports = router;
