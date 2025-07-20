@@ -55,7 +55,7 @@ app.use(express.urlencoded({ extended: false })); // Enable parsing of URL-encod
 
 // Enable CORS for all routes (adjust options as needed for production)
 app.use(cors({
-origin: '*', // Temporarily allow all origins, including 'null' for file:///
+origin: process.env.FRONTEND_URL || "http://localhost:3000", // Temporarily allow all origins, including 'null' for file:///
 methods: ['GET', 'POST', 'PUT', 'DELETE'], // Be explicit about allowed methods
 credentials: true // If you handle cookies or auth headers
 }));
