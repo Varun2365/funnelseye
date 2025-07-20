@@ -41,7 +41,7 @@ const server = http.createServer(app);
 // Initialize Socket.IO server
 const io = new Server(server, {
     cors: {
-        origin: process.env.FRONTEND_URL || "http://localhost:3000", // IMPORTANT: Configure your frontend URL
+        origin: process.env.FRONTEND_URL || "http://localhost:5000", // IMPORTANT: Configure your frontend URL
         methods: ["GET", "POST"]
     }
 });
@@ -55,7 +55,7 @@ app.use(express.urlencoded({ extended: false })); // Enable parsing of URL-encod
 
 // Enable CORS for all routes (adjust options as needed for production)
 app.use(cors({
-origin: process.env.FRONTEND_URL || "http://localhost:3000", // Temporarily allow all origins, including 'null' for file:///
+origin: process.env.FRONTEND_URL || "http://localhost:5000", // Temporarily allow all origins, including 'null' for file:///
 methods: ['GET', 'POST', 'PUT', 'DELETE'], // Be explicit about allowed methods
 credentials: true // If you handle cookies or auth headers
 }));
