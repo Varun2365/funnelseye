@@ -50,9 +50,9 @@ const io = new Server(server, {
 whatsappManager.setIoInstance(io);
 
 // ✨ Express Middleware Setup
-app.use(express.json()); // Enable parsing of JSON request bodies
-app.use(express.urlencoded({ extended: false })); // Enable parsing of URL-encoded request bodies (for forms)
-
+// Increase the payload size limit for JSON and URL-encoded bodies
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' })); // Use extended: true as it's generally recommended with larger payloads
 // Enable CORS for all routes (adjust options as needed for production)
 app.use(cors({
 origin: process.env.FRONTEND_URL || "http://localhost:5000", // Temporarily allow all origins, including 'null' for file:///
