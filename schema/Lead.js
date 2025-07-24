@@ -1,5 +1,3 @@
-// D:\PRJ_YCT_Final\models\Lead.js
-
 const mongoose = require('mongoose');
 
 const LeadSchema = new mongoose.Schema({
@@ -11,7 +9,11 @@ const LeadSchema = new mongoose.Schema({
     funnelId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Funnel',
-        // required: [true, 'Lead must be associated with a funnel.']
+    },
+    funnelName: {
+        type: String,
+        trim: true,
+        maxlength: [100, 'Funnel name can not be more than 100 characters']
     },
     name: {
         type: String,
@@ -22,7 +24,6 @@ const LeadSchema = new mongoose.Schema({
     email: {
         type: String,
         required: [true, 'Please add an email'],
-        // unique: false,
         match: [
             /^(([^<>()[\]\\.,;:\s@"]+(\.[^<>()[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/,
             'Please add a valid email'
@@ -33,56 +34,55 @@ const LeadSchema = new mongoose.Schema({
         maxlength: [20, 'Phone number can not be longer than 20 characters'],
         required: false
     },
-    status: { // e.g., 'New', 'Contacted', 'Qualified', 'Unqualified', 'Converted', 'Follow-up'
+    status: {
         type: String,
         enum: ['New', 'Contacted', 'Qualified', 'Unqualified', 'Converted', 'Follow-up'],
         default: 'New'
     },
-    source: { // e.g., 'Funnel Form', 'Manual', 'Import'
+    source: {
         type: String,
         required: [true, 'Please add a lead source'],
         default: 'Funnel Form'
     },
-    notes: { // General notes about the lead
+    notes: {
         type: String,
         maxlength: [500, 'Notes can not be more than 500 characters']
     },
-    // --- NEW FIELDS FOR LEAD TEMPERATURE & FOLLOW-UPS ---
     leadTemperature: {
         type: String,
         enum: ['Cold', 'Warm', 'Hot'],
-        default: 'Warm', // Default to Warm for new leads unless specified
+        default: 'Warm',
         required: [true, 'Please specify lead temperature']
     },
     lastFollowUpAt: {
         type: Date,
-        required: false // Not required initially
+        required: false
     },
     nextFollowUpAt: {
         type: Date,
-        required: false // Not required initially
+        required: false
     },
-    followUpHistory: [ // Array to store a log of follow-up interactions
+    followUpHistory: [
         {
             note: {
                 type: String,
                 required: [true, 'Follow-up note is required.']
             },
-            followUpDate: { // Date when this specific follow-up occurred
+            followUpDate: {
                 type: Date,
                 default: Date.now
             },
-            createdBy: { // Who recorded this follow-up (e.g., Coach or Employee)
+            createdBy: {
                 type: mongoose.Schema.Types.ObjectId,
-                ref: 'User', // Assuming User model has Coaches/Employees
-                required: false // Might be auto-generated sometimes
+                ref: 'User',
+                required: false
             }
         }
     ],
-    assignedTo: { // If leads are assigned to specific employees/coaches
+    assignedTo: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
-        required: false // Optional, can be assigned later
+        required: false
     }
 }, {
     timestamps: true
@@ -90,7 +90,6 @@ const LeadSchema = new mongoose.Schema({
 
 LeadSchema.index({ coachId: 1, funnelId: 1, email: 1 });
 LeadSchema.index({ coachId: 1, createdAt: -1 });
-LeadSchema.index({ coachId: 1, leadTemperature: 1, nextFollowUpAt: 1 }); // For efficient follow-up reminders
+LeadSchema.index({ coachId: 1, leadTemperature: 1, nextFollowUpAt: 1 });
 
-// New, correct way to prevent OverwriteModelError
 module.exports = mongoose.models.Lead || mongoose.model('Lead', LeadSchema);

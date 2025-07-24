@@ -71,8 +71,7 @@ app.use('/api/funnels', funnelRoutes);
 app.use('/api/leads', leadRoutes);
 app.use('/api/coach-whatsapp', coachWhatsAppRoutes);
 app.use('/api/automation-rules', automationRuleRoutes);
-app.use('/api/files', uploadRoutes); // <--- NEW: Mount Upload Routes, using /api/files as base
-
+app.use('/api/files', uploadRoutes); 
 
 // 🏠 Basic Root Route (for testing if server is running)
 app.get('/', (req, res) => {

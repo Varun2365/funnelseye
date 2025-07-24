@@ -19,7 +19,7 @@ if (!fs.existsSync(UPLOADS_DIR)) {
 // Multer Storage Configuration
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null, UPLOADS_DIR); // Files will be stored in public/uploads/
+    cb(null, `${UPLOADS_DIR}`); // Files will be stored in public/uploads/
   },
   filename: function (req, file, cb) {
     // Create a unique filename to prevent conflicts
@@ -54,6 +54,7 @@ const upload = multer({
 // Apply the 'protect' middleware to secure this endpoint
 router.post('/upload', protect, upload.single('file'), async (req, res) => {
   try {
+    console.log(req.coachId)
     if (!req.file) {
       return res.status(400).json({ message: 'No file uploaded.' });
     }
