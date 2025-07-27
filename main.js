@@ -26,7 +26,8 @@ const funnelRoutes = require('./routes/funnelRoutes');
 const leadRoutes = require('./routes/leadRoutes.js');
 const coachWhatsAppRoutes = require('./routes/coachWhatsappRoutes.js');
 const automationRuleRoutes = require('./routes/automationRuleRoutes.js');
-const uploadRoutes = require('./routes/uploadRoutes'); // <--- NEW: Upload Routes
+const uploadRoutes = require('./routes/uploadRoutes');
+const webpageRenderRoutes = require('./routes/webpageRenderRoutes'); // <-- ADDED LINE FOR WEBPAGE RENDERER
 
 // 🌐 Initialize Express App
 // IMPORTANT: Initialize automation processor before starting the server
@@ -72,6 +73,7 @@ app.use('/api/leads', leadRoutes);
 app.use('/api/coach-whatsapp', coachWhatsAppRoutes);
 app.use('/api/automation-rules', automationRuleRoutes);
 app.use('/api/files', uploadRoutes); 
+app.use('/funnels', webpageRenderRoutes); // <-- ADDED LINE FOR WEBPAGE RENDERER (no '/api' prefix here)
 
 // 🏠 Basic Root Route (for testing if server is running)
 app.get('/', (req, res) => {
@@ -210,6 +212,116 @@ app.get('/', (req, res) => {
     `);
 });
 
+// --- ❌ 404 Not Found Handler (Modern, Minimalistic with Color) ---
+// This middleware will be hit if no other route has handled the request.
+app.use((req, res, next) => {
+    res.status(404).send(`
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>404 - Page Not Found | FunnelsEye</title>
+            <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+            <style>
+                body {
+                    font-family: 'Inter', sans-serif;
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    min-height: 100vh;
+                    margin: 0;
+                    background-color: #f0f4f8; /* A very light blue-grey for a soft, modern feel */
+                    color: #333;
+                    text-align: center;
+                    overflow: hidden;
+                    position: relative;
+                }
+                .container-404 {
+                    background-color: #ffffff;
+                    padding: 60px 80px;
+                    border-radius: 12px;
+                    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
+                    animation: fadeIn 0.8s ease-out;
+                    z-index: 1;
+                    max-width: 500px;
+                    margin: 20px;
+                    border: 1px solid #e0e6ed; /* Subtle border */
+                }
+                h1 {
+                    font-size: 6em;
+                    margin: 0;
+                    font-weight: 700;
+                    background: linear-gradient(90deg, #6a11cb 0%, #2575fc 100%); /* Blue-purple gradient for 404 */
+                    -webkit-background-clip: text;
+                    -webkit-text-fill-color: transparent;
+                    letter-spacing: -2px;
+                }
+                h2 {
+                    font-size: 2em;
+                    margin-top: 10px;
+                    color: #444; /* Slightly darker grey for heading */
+                    font-weight: 600;
+                }
+                p {
+                    font-size: 1.1em;
+                    margin-top: 15px;
+                    margin-bottom: 30px;
+                    color: #666; /* Medium grey for body text */
+                    line-height: 1.6;
+                }
+                a {
+                    display: inline-block;
+                    background: linear-gradient(90deg, #2575fc 0%, #6a11cb 100%); /* Reverse gradient for button */
+                    color: #fff;
+                    padding: 12px 28px;
+                    border-radius: 8px;
+                    text-decoration: none;
+                    font-weight: 600;
+                    font-size: 1em;
+                    transition: all 0.3s ease;
+                    box-shadow: 0 5px 15px rgba(0,0,0,0.15);
+                }
+                a:hover {
+                    transform: translateY(-3px);
+                    box-shadow: 0 8px 20px rgba(0,0,0,0.2);
+                    opacity: 0.9;
+                }
+
+                /* Subtle background animation */
+                .dot-grid {
+                    position: absolute;
+                    width: 100%;
+                    height: 100%;
+                    background-image: radial-gradient(#d8dee9 1px, transparent 1px); /* Lighter dots */
+                    background-size: 25px 25px; /* Slightly larger grid */
+                    opacity: 0.5;
+                    animation: pan-background 45s linear infinite; /* Slower pan */
+                }
+                @keyframes fadeIn {
+                    from { opacity: 0; transform: scale(0.95); }
+                    to { opacity: 1; transform: scale(1); }
+                }
+                @keyframes pan-background {
+                    0% { background-position: 0 0; }
+                    100% { background-position: 250px 250px; }
+                }
+            </style>
+        </head>
+        <body>
+            <div class="dot-grid"></div>
+            <div class="container-404">
+                <h1>404</h1>
+                <h2>Page Not Found</h2>
+                <p>The page you are looking for might have been removed, had its name changed, or is temporarily unavailable.</p>
+                <a href="/">Go to FunnelsEye Home</a>
+            </div>
+        </body>
+        </html>
+    `);
+});
+
+
 // ⚠️ IMPORTANT: Error Handling Middleware
 // app.use(errorHandler); // Uncomment if you have this in place
 
@@ -303,11 +415,16 @@ const startServer = async () => {
                 { method: 'POST', path: '/send-media', desc: 'Send media message via WhatsApp' },
             ];
 
-            // --- NEW: Upload Routes Data for the table ---
             const uploadRoutesData = [
                 { method: 'POST', path: '/upload', desc: 'Upload a file (PDF, Doc, Video, Audio)' },
                 // Add more if you implement GET, DELETE for files
             ];
+
+            // --- NEW: Webpage Render Routes Data for the table ---
+            const webpageRenderRoutesData = [
+                { method: 'GET', path: '/:funnelSlug/:pageSlug', desc: 'Render a public funnel page' },
+            ];
+
 
             // --- Print API Endpoints Tables ---
             printApiTable('--- 🔑 Authentication Endpoints ---', authRoutesData, '/api/auth');
@@ -315,7 +432,8 @@ const startServer = async () => {
             printApiTable('--- 🎯 Lead Management (CRM) Endpoints ---', leadRoutesData, '/api/leads');
             printApiTable('--- ⚙️ Automation Rules Endpoints ---', automationRuleRoutesData, '/api/automation-rules');
             printApiTable('--- 💬 Coach WhatsApp Integration Endpoints ---', whatsappRoutesData, '/api/coach-whatsapp');
-            printApiTable('--- 📁 File Upload Endpoints ---', uploadRoutesData, '/api/files'); // <--- NEW PRINT CALL
+            printApiTable('--- 📁 File Upload Endpoints ---', uploadRoutesData, '/api/files');
+            printApiTable('--- 🌐 Public Funnel Webpage Rendering Endpoints ---', webpageRenderRoutesData, '/funnels');
 
             console.log('\n\n---------------------------------------\n\n');
 

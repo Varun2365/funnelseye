@@ -1,3 +1,4 @@
+// User Schema Update
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
@@ -37,6 +38,18 @@ const userSchema = new mongoose.Schema({
         type: String,
         trim: true,
     },
+    // --- New Fields Added ---
+    country: {
+        type: String,
+        trim: true,
+        default: ''
+    },
+    city: {
+        type: String,
+        trim: true,
+        default: ''
+    },
+    // --- End New Fields ---
     role: {
         type: String,
         enum: ['coach', 'admin', 'client', 'super_admin'],
