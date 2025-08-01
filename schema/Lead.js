@@ -1,20 +1,22 @@
-// Lead Schema Update
+// PRJ_YCT_Final/schema/Lead.js
 const mongoose = require('mongoose');
 
 const LeadSchema = new mongoose.Schema({
     coachId: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'User',
+        ref: 'User', // Assuming your User schema is in 'schema/User.js'
         required: [true, 'Lead must be associated with a coach.']
     },
     funnelId: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'Funnel',
+        ref: 'Funnel', // Assuming your Funnel schema is in 'schema/Funnel.js'
+        required: false // A lead might not always come from a specific funnel
     },
-    funnelName: {
+    funnelName: { // Storing name for easier display without populating
         type: String,
         trim: true,
-        maxlength: [100, 'Funnel name can not be more than 100 characters']
+        maxlength: [100, 'Funnel name can not be more than 100 characters'],
+        required: false
     },
     name: {
         type: String,
@@ -24,58 +26,62 @@ const LeadSchema = new mongoose.Schema({
     },
     email: {
         type: String,
-        required: [true, 'Please add an email'],
+        required: function() { return !this.phone; }, // Requires email OR phone
         match: [
             /^(([^<>()[\]\\.,;:\s@"]+(\.[^<>()[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/,
             'Please add a valid email'
-        ]
+        ],
+        lowercase: true, // Store emails in lowercase for consistency
+        trim: true
     },
     phone: {
         type: String,
         maxlength: [20, 'Phone number can not be longer than 20 characters'],
-        required: false
+        required: function() { return !this.email; }, // Requires email OR phone
+        trim: true
     },
-    // --- New Fields Added ---
     country: {
         type: String,
         trim: true,
-        required: false // Assuming it's not strictly required for every lead
+        required: false
     },
     city: {
         type: String,
         trim: true,
-        required: false // Assuming it's not strictly required for every lead
+        required: false
     },
-    // --- End New Fields ---
+    // --- LEAD QUALIFICATION FIELDS ---
     status: {
         type: String,
-        enum: ['New', 'Contacted', 'Qualified', 'Unqualified', 'Converted', 'Follow-up'],
+        enum: ['New', 'Contacted', 'Qualified', 'Unqualified', 'Converted', 'Follow-up', 'Archived'],
         default: 'New'
-    },
-    source: {
-        type: String,
-        required: [true, 'Please add a lead source'],
-        default: 'Funnel Form'
-    },
-    notes: {
-        type: String,
-        maxlength: [500, 'Notes can not be more than 500 characters']
     },
     leadTemperature: {
         type: String,
         enum: ['Cold', 'Warm', 'Hot'],
-        default: 'Warm',
+        default: 'Warm', // Default to Warm if no specific signals
         required: [true, 'Please specify lead temperature']
     },
-    lastFollowUpAt: {
+    source: {
+        type: String,
+        required: [true, 'Please add a lead source'],
+        default: 'Web Form' // General default, can be overridden by specific forms
+    },
+    notes: {
+        type: String,
+        maxlength: [2000, 'Notes can not be more than 2000 characters'] // Increased for initial messages + internal notes
+    },
+    // --- END LEAD QUALIFICATION FIELDS ---
+
+    lastFollowUpAt: { // Timestamp of the last time a coach followed up
         type: Date,
         required: false
     },
-    nextFollowUpAt: {
+    nextFollowUpAt: { // When the next follow-up is scheduled
         type: Date,
         required: false
     },
-    followUpHistory: [
+    followUpHistory: [ // Log of follow-up interactions
         {
             note: {
                 type: String,
@@ -85,24 +91,32 @@ const LeadSchema = new mongoose.Schema({
                 type: Date,
                 default: Date.now
             },
-            createdBy: {
+            createdBy: { // Which user logged this follow-up
                 type: mongoose.Schema.Types.ObjectId,
                 ref: 'User',
                 required: false
             }
         }
     ],
-    assignedTo: {
+    assignedTo: { // Which specific coach is actively working this lead (can be different from coachId)
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
         required: false
     }
 }, {
-    timestamps: true
+    timestamps: true // Adds createdAt and updatedAt automatically
 });
 
-LeadSchema.index({ coachId: 1, funnelId: 1, email: 1 });
-LeadSchema.index({ coachId: 1, createdAt: -1 });
-LeadSchema.index({ coachId: 1, leadTemperature: 1, nextFollowUpAt: 1 });
+// --- Indexes for efficient querying and preventing duplicates ---
+// Combined unique index for coach and email (case-insensitive for email)
+LeadSchema.index({ coachId: 1, email: 1 }, { unique: true, partialFilterExpression: { email: { $exists: true, $ne: null } } });
+// Combined unique index for coach and phone
+LeadSchema.index({ coachId: 1, phone: 1 }, { unique: true, partialFilterExpression: { phone: { $exists: true, $ne: null } } });
+
+// Other useful indexes for querying
+LeadSchema.index({ coachId: 1, status: 1 });
+LeadSchema.index({ coachId: 1, leadTemperature: 1 });
+LeadSchema.index({ coachId: 1, nextFollowUpAt: 1 });
+LeadSchema.index({ coachId: 1, createdAt: -1 }); // For sorting by newest lead
 
 module.exports = mongoose.models.Lead || mongoose.model('Lead', LeadSchema);

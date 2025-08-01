@@ -1,3 +1,5 @@
+// PRJ_YCT_Final/schema/AutomationRule.js
+
 const mongoose = require('mongoose');
 
 // Sub-schema for individual actions within an automation rule
@@ -11,7 +13,7 @@ const AutomationActionSchema = new mongoose.Schema({
             'CREATE_SMS_MESSAGE',
             'CREATE_TASK',
             'UPDATE_LEAD_STATUS',
-            'ASSIGN_LEAD_TO_COACH',
+            'ASSIGN_LEAD_TO_COACH', // This action type is for the *action* of assigning
             // Add more action types as your platform grows
         ]
     },
@@ -33,19 +35,28 @@ const AutomationRuleSchema = new mongoose.Schema({
         type: String,
         required: true,
         enum: [
-            'LEAD_CREATED',
+            // Core Lead Events
+            'LEAD_CREATED', // Manual lead creation by coach
+            'LEAD_CREATED_VIA_FORM', // <-- NEW: From public forms
+            'LEAD_UPDATED_VIA_FORM', // <-- NEW: From public forms
             'LEAD_STATUS_CHANGED',
             'LEAD_TEMPERATURE_CHANGED',
-            'FORM_SUBMITTED',
+            'LEAD_ASSIGNED_TO_CHANGED', // <-- RENAMED from ASSIGN_LEAD_TO_COACH
+            'LEAD_FOLLOW_UP_ADDED', // <-- NEW: When a coach adds a note
+            'LEAD_FOLLOWUP_SCHEDULED_OR_UPDATED', // <-- NEW: When next follow-up date changes
+            'LEAD_DELETED', // <-- NEW
+
+            // Other General Events (from your original list, for future use)
+            'FORM_SUBMITTED', // Generic form submission (if you want a broader trigger than just lead creation/update)
             'APPOINTMENT_BOOKED',
             'APPOINTMENT_REMINDER_TIME',
-            'WHATSAPP_MESSAGE_RECEIVED',
+            'WHATSAPP_MESSAGE_RECEIVED', // Received messages from contacts
             'FUNNEL_STAGE_COMPLETED',
             'PAYMENT_FAILED',
             'SUBSCRIPTION_EXPIRED',
             'DOWNLINE_INACTIVE',
-            'PAGE_VIEWED', // If you want to track specific page views as triggers
-            'BUTTON_CLICKED', // If specific CTA clicks are triggers
+            'PAGE_VIEWED',
+            'BUTTON_CLICKED',
             // ... and any other events you listed previously or find in your document
         ]
     },
@@ -67,6 +78,6 @@ const AutomationRuleSchema = new mongoose.Schema({
     timestamps: true // Mongoose will automatically add `createdAt` and `updatedAt` fields
 });
 
-const AutomationRule = mongoose.model('AutomationRule', AutomationRuleSchema);
+const AutomationRule = mongoose.models.AutomationRule || mongoose.model('AutomationRule', AutomationRuleSchema);
 
 module.exports = AutomationRule;

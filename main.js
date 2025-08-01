@@ -28,6 +28,9 @@ const coachWhatsAppRoutes = require('./routes/coachWhatsappRoutes.js');
 const automationRuleRoutes = require('./routes/automationRuleRoutes.js');
 const uploadRoutes = require('./routes/uploadRoutes');
 const webpageRenderRoutes = require('./routes/webpageRenderRoutes'); // <-- ADDED LINE FOR WEBPAGE RENDERER
+// --- NEW: Import Daily Priority Feed Routes ---
+const dailyPriorityFeedRoutes = require('./routes/dailyPriorityFeedRoutes');
+// --- END NEW ---
 
 // 🌐 Initialize Express App
 // IMPORTANT: Initialize automation processor before starting the server
@@ -72,8 +75,11 @@ app.use('/api/funnels', funnelRoutes);
 app.use('/api/leads', leadRoutes);
 app.use('/api/coach-whatsapp', coachWhatsAppRoutes);
 app.use('/api/automation-rules', automationRuleRoutes);
-app.use('/api/files', uploadRoutes); 
+app.use('/api/files', uploadRoutes);
 app.use('/funnels', webpageRenderRoutes); // <-- ADDED LINE FOR WEBPAGE RENDERER (no '/api' prefix here)
+// --- NEW: Mount Daily Priority Feed Routes ---
+app.use('/api/coach', dailyPriorityFeedRoutes);
+// --- END NEW ---
 
 // 🏠 Basic Root Route (for testing if server is running)
 app.get('/', (req, res) => {
@@ -425,6 +431,12 @@ const startServer = async () => {
                 { method: 'GET', path: '/:funnelSlug/:pageSlug', desc: 'Render a public funnel page' },
             ];
 
+            // --- NEW: Daily Priority Feed Routes Data for the table ---
+            const dailyPriorityFeedRoutesData = [
+                { method: 'GET', path: '/daily-feed', desc: 'Get daily prioritized suggestions for coach' },
+            ];
+            // --- END NEW ---
+
 
             // --- Print API Endpoints Tables ---
             printApiTable('--- 🔑 Authentication Endpoints ---', authRoutesData, '/api/auth');
@@ -434,6 +446,9 @@ const startServer = async () => {
             printApiTable('--- 💬 Coach WhatsApp Integration Endpoints ---', whatsappRoutesData, '/api/coach-whatsapp');
             printApiTable('--- 📁 File Upload Endpoints ---', uploadRoutesData, '/api/files');
             printApiTable('--- 🌐 Public Funnel Webpage Rendering Endpoints ---', webpageRenderRoutesData, '/funnels');
+            // --- NEW: Print Daily Priority Feed Routes Table ---
+            printApiTable('--- 💡 Daily Priority Feed Endpoints ---', dailyPriorityFeedRoutesData, '/api/coach');
+            // --- END NEW ---
 
             console.log('\n\n---------------------------------------\n\n');
 
