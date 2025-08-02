@@ -5,20 +5,19 @@ require('dotenv').config();
 
 // 📦 Core Node.js Modules
 const express = require('express');
-const http = require('http'); // Import http module for Socket.IO
-const path = require('path'); // NEW: Import path module for serving static files
+const http = require('http');
+const path = require('path');
 
 // 🌐 Socket.IO Imports
-const { Server } = require('socket.io'); // Socket.IO server
+const { Server } = require('socket.io');
 
 // ⚙️ Configuration & Utilities
-const { connectDB } = require('./config/db'); // Assuming connectDB is directly exported
-const { initAutomationProcessor } = require('./services/automationProcessor'); // Your automation brain
-const whatsappManager = require('./services/whatsappManager'); // Import whatsappManager
+const { connectDB } = require('./config/db');
+const { initAutomationProcessor } = require('./services/automationProcessor');
+const whatsappManager = require('./services/whatsappManager');
 
 // 🛡️ Middleware Imports
-const cors = require('cors'); // Import CORS middleware
-// const errorHandler = require('./middleware/errorMiddleware'); // Global error handler - Uncomment if used
+const cors = require('cors');
 
 // 🛣️ Route Imports
 const authRoutes = require('./routes/authRoutes.js');
@@ -27,45 +26,88 @@ const leadRoutes = require('./routes/leadRoutes.js');
 const coachWhatsAppRoutes = require('./routes/coachWhatsappRoutes.js');
 const automationRuleRoutes = require('./routes/automationRuleRoutes.js');
 const uploadRoutes = require('./routes/uploadRoutes');
-const webpageRenderRoutes = require('./routes/webpageRenderRoutes'); // <-- ADDED LINE FOR WEBPAGE RENDERER
-// --- NEW: Import Daily Priority Feed Routes ---
+const webpageRenderRoutes = require('./routes/webpageRenderRoutes');
 const dailyPriorityFeedRoutes = require('./routes/dailyPriorityFeedRoutes');
-// --- END NEW ---
+
+// --- Define API Routes Data for both Console & HTML Table Generation ---
+const allApiRoutes = {
+    '🔑 Authentication': [
+        { method: 'POST', path: '/api/auth/signup', desc: 'User Registration' },
+        { method: 'POST', path: '/api/auth/verify-otp', desc: 'OTP Verification' },
+        { method: 'POST', path: '/api/auth/login', desc: 'User Login' },
+        { method: 'GET', path: '/api/auth/me', desc: 'Get Current User' },
+    ],
+    '📈 Funnel Management': [
+        { method: 'GET', path: '/api/funnels/coach/:coachId/funnels', desc: 'Get all Funnels for a Coach' },
+        { method: 'GET', path: '/api/funnels/coach/:coachId/funnels/:funnelId', desc: 'Get Single Funnel Details' },
+        { method: 'POST', path: '/api/funnels/coach/:coachId/funnels', desc: 'Create New Funnel' },
+        { method: 'PUT', path: '/api/funnels/coach/:coachId/funnels/:funnelId', desc: 'Update Funnel' },
+        { method: 'DELETE', path: '/api/funnels/coach/:coachId/funnel/:funnelId', desc: 'Delete Funnel' },
+        { method: 'GET', path: '/api/funnels/coach/:coachId/funnels/:funnelId/stages/:stageType', desc: 'Get Stages by Type' },
+        { method: 'POST', path: '/api/funnels/:funnelId/stages', desc: 'Add Stage to Funnel' },
+        { method: 'PUT', path: '/api/funnels/:funnelId/stages/:stageSettingsId', desc: 'Update Stage Settings' },
+        { method: 'POST', path: '/api/funnels/track', desc: 'Track Funnel Event' },
+        { method: 'GET', path: '/api/funnels/:funnelId/analytics', desc: 'Get Funnel Analytics Data' },
+    ],
+    '🎯 Lead Management (CRM)': [
+        { method: 'POST', path: '/api/leads', desc: 'Create New Lead (PUBLIC)' },
+        { method: 'GET', path: '/api/leads', desc: 'Get All Leads (filters/pagination)' },
+        { method: 'GET', path: '/api/leads/:id', desc: 'Get Single Lead by ID' },
+        { method: 'PUT', path: '/api/leads/:id', desc: 'Update Lead' },
+        { method: 'DELETE', path: '/api/leads/:id', desc: 'Delete Lead' },
+        { method: 'POST', path: '/api/leads/:id/followup', desc: 'Add Follow-up Note' },
+        { method: 'GET', path: '/api/leads/followups/upcoming', desc: 'Get Leads for Upcoming Follow-ups' },
+    ],
+    '⚙️ Automation Rules': [
+        { method: 'POST', path: '/api/automation-rules', desc: 'Create New Automation Rule' },
+    ],
+    '💬 Coach WhatsApp': [
+        { method: 'GET', path: '/api/coach-whatsapp/status', desc: 'Check WhatsApp connection status' },
+        { method: 'POST', path: '/api/coach-whatsapp/add-device', desc: 'Initiate WhatsApp device linking' },
+        { method: 'GET', path: '/api/coach-whatsapp/get-qr', desc: 'Retrieve WhatsApp QR code' },
+        { method: 'POST', path: '/api/coach-whatsapp/logout-device', desc: 'Disconnect WhatsApp device' },
+        { method: 'POST', path: '/api/coach-whatsapp/send-message', desc: 'Send text message' },
+        { method: 'POST', path: '/api/coach-whatsapp/send-media', desc: 'Send media message' },
+    ],
+    '📁 File Upload': [
+        { method: 'POST', path: '/api/files/upload', desc: 'Upload a file' },
+    ],
+    '💡 Priority Feed & Calendar': [
+        { method: 'GET', path: '/api/coach/daily-feed', desc: 'Get daily prioritized suggestions' },
+        { method: 'GET', path: '/api/coach/:coachId/availability', desc: 'Get coach availability settings' },
+        { method: 'POST', path: '/api/coach/availability', desc: 'Set or update coach availability' },
+        { method: 'GET', path: '/api/coach/:coachId/available-slots', desc: 'Get bookable slots for a coach' },
+        { method: 'POST', path: '/api/coach/:coachId/book', desc: 'Book a new appointment' },
+        { method: 'GET', path: '/api/coach/:coachId/calendar', desc: 'Get Calendar of Coach' },
+    ],
+    '🌐 Public Funnel Pages': [
+        { method: 'GET', path: '/funnels/:funnelSlug/:pageSlug', desc: 'Render a public funnel page' },
+    ],
+};
+// --- END ROUTES DATA ---
 
 // 🌐 Initialize Express App
-// IMPORTANT: Initialize automation processor before starting the server
-// so it's ready to listen for events immediately.
 initAutomationProcessor();
 console.log('Funnelseye Automation Processor initialized.');
 
 const app = express();
-// Create an HTTP server from your Express app (required for Socket.IO)
 const server = http.createServer(app);
-
-// Initialize Socket.IO server
 const io = new Server(server, {
-    cors: {
-        origin: process.env.FRONTEND_URL || "http://localhost:5000", // IMPORTANT: Configure your frontend URL
-        methods: ["GET", "POST"]
-    }
+    cors: {
+        origin: process.env.FRONTEND_URL || "http://localhost:5000",
+        methods: ["GET", "POST"]
+    }
 });
-
-// Pass the Socket.IO instance to the whatsappManager so it can emit events
 whatsappManager.setIoInstance(io);
 
 // ✨ Express Middleware Setup
-// Increase the payload size limit for JSON and URL-encoded bodies
 app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' })); // Use extended: true as it's generally recommended with larger payloads
-// Enable CORS for all routes (adjust options as needed for production)
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(cors({
-origin: process.env.FRONTEND_URL || "http://localhost:5000", // Temporarily allow all origins, including 'null' for file:///
-methods: ['GET', 'POST', 'PUT', 'DELETE'], // Be explicit about allowed methods
-credentials: true // If you handle cookies or auth headers
+    origin: process.env.FRONTEND_URL || "http://localhost:5000",
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    credentials: true
 }));
-
-// --- NEW: Serve Static Files for Uploads ---
-// This line makes files located in the 'public/uploads' directory accessible via '/uploads' URL path.
 app.use('/uploads', express.static(path.join(__dirname, 'public/uploads')));
 
 
@@ -76,255 +118,368 @@ app.use('/api/leads', leadRoutes);
 app.use('/api/coach-whatsapp', coachWhatsAppRoutes);
 app.use('/api/automation-rules', automationRuleRoutes);
 app.use('/api/files', uploadRoutes);
-app.use('/funnels', webpageRenderRoutes); // <-- ADDED LINE FOR WEBPAGE RENDERER (no '/api' prefix here)
-// --- NEW: Mount Daily Priority Feed Routes ---
+app.use('/funnels', webpageRenderRoutes);
 app.use('/api/coach', dailyPriorityFeedRoutes);
-// --- END NEW ---
 
-// 🏠 Basic Root Route (for testing if server is running)
+
+// 🏠 Dynamic Homepage Route (Landing page with a button)
 app.get('/', (req, res) => {
-    res.send(`
-        <!DOCTYPE html>
-        <html lang="en">
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>FunnelsEye API Status</title>
-            <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
-            <style>
-                body {
-                    font-family: 'Poppins', sans-serif;
-                    display: flex;
-                    justify-content: center;
-                    align-items: center;
-                    min-height: 100vh;
-                    margin: 0;
-                    background: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%); /* Vibrant gradient */
-                    color: #fff;
-                    text-align: center;
-                    flex-direction: column;
-                    overflow: hidden; /* Hide overflow from particles */
-                }
-                .background-particles {
-                    position: absolute;
-                    width: 100%;
-                    height: 100%;
-                    top: 0;
-                    left: 0;
-                    overflow: hidden;
-                    z-index: 0;
-                }
-                .particle {
-                    position: absolute;
-                    background-color: rgba(255, 255, 255, 0.1);
-                    border-radius: 50%;
-                    animation: float 15s infinite ease-in-out alternate;
-                }
-                .particle:nth-child(1) { width: 30px; height: 30px; left: 10%; top: 20%; animation-duration: 18s; }
-                .particle:nth-child(2) { width: 50px; height: 50px; left: 25%; top: 50%; animation-duration: 22s; }
-                .particle:nth-child(3) { width: 20px; height: 20px; left: 40%; top: 10%; animation-duration: 15s; }
-                .particle:nth-child(4) { width: 40px; height: 40px; left: 60%; top: 70%; animation-duration: 20s; }
-                .particle:nth-child(5) { width: 35px; height: 35px; left: 80%; top: 30%; animation-duration: 17s; }
-                .particle:nth-child(6) { width: 25px; height: 25px; left: 5%; top: 80%; animation-duration: 19s; }
-                .particle:nth-child(7) { width: 45px; height: 45px; left: 90%; top: 60%; animation-duration: 21s; }
-                .container {
-                    background-color: rgba(255, 255, 255, 0.15); /* Semi-transparent white background */
-                    backdrop-filter: blur(10px); /* Frosted glass effect */
-                    padding: 40px 60px;
-                    border-radius: 16px;
-                    box-shadow: 0 15px 40px rgba(0, 0, 0, 0.3);
-                    transform: translateY(0);
-                    transition: transform 0.4s ease-in-out, box-shadow 0.4s ease;
-                    z-index: 1; /* Ensure container is above particles */
-                }
-                .container:hover {
-                    transform: translateY(-8px);
-                    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4);
-                }
-                h1 {
-                    color: #ffffff;
-                    font-size: 3em;
-                    margin-bottom: 20px;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-                }
-                h1 .icon {
-                    font-size: 1.2em;
-                    margin: 0 15px;
-                    animation: pulse 1.5s infinite alternate;
-                }
-                p {
-                    font-size: 1.2em;
-                    color: #e0e0e0;
-                    line-height: 1.6;
-                    max-width: 600px;
-                    margin: 0 auto 30px;
-                }
-                .api-link {
-                    margin-top: 30px;
-                    font-size: 1.1em;
-                }
-                .api-link a {
-                    color: #8aff8a; /* Bright green for links */
-                    text-decoration: none;
-                    font-weight: 600;
-                    padding: 10px 20px;
-                    border: 2px solid #8aff8a;
-                    border-radius: 8px;
-                    transition: all 0.3s ease;
-                    display: inline-block;
-                }
-                .api-link a:hover {
-                    background-color: #8aff8a;
-                    color: #2575fc; /* Dark blue on hover */
-                    transform: translateY(-3px);
-                    box-shadow: 0 5px 15px rgba(0, 255, 0, 0.2);
-                }
-                @keyframes pulse {
-                    from { transform: scale(1); }
-                    to { transform: scale(1.1); }
-                }
-                @keyframes float {
-                    0% { transform: translateY(0px) translateX(0px) rotate(0deg); opacity: 0.8; }
-                    25% { transform: translateY(-20px) translateX(10px) rotate(5deg); opacity: 1; }
-                    50% { transform: translateY(0px) translateX(0px) rotate(0deg); opacity: 0.8; }
-                    75% { transform: translateY(20px) translateX(-10px) rotate(-5deg); opacity: 1; }
-                    100% { transform: translateY(0px) translateX(0px) rotate(0deg); opacity: 0.8; }
-                }
-            </style>
-        </head>
-        <body>
-            <div class="background-particles">
-                <div class="particle"></div>
-                <div class="particle"></div>
-                <div class="particle"></div>
-                <div class="particle"></div>
-                <div class="particle"></div>
-                <div class="particle"></div>
-                <div class="particle"></div>
-            </div>
-            <div class="container">
-                <h1><span class="icon">🚀</span> FunnelsEye API is Soaring! <span class="icon">✨</span></h1>
-                <p>Your API server is live, secure, and ready to power your funnel automation.</p>
-                <p>Start building seamless user journeys and engaging experiences today.</p>
-                <div class="api-link">
-                    <p><a href="/api/auth/login">Explore API Endpoints</a></p>
-                </div>
-            </div>
-        </body>
-        </html>
-    `);
+    let routeTables = '';
+    let sidebarLinks = '';
+
+    for (const title in allApiRoutes) {
+        const id = title.replace(/[^a-zA-Z0-9]/g, '');
+        const isActive = Object.keys(allApiRoutes)[0] === title ? 'active' : '';
+
+        sidebarLinks += `<a href="#${id}" class="tab-link ${isActive}">${title}</a>`;
+
+        routeTables += `
+            <div id="${id}" class="route-table-container tab-content ${isActive}">
+                <h2>${title}</h2>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Method</th>
+                            <th>Endpoint</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+        allApiRoutes[title].forEach(route => {
+            routeTables += `
+                <tr>
+                    <td class="method method-${route.method.toLowerCase()}">${route.method}</td>
+                    <td>${route.path}</td>
+                    <td>${route.desc}</td>
+                </tr>
+            `;
+        });
+        routeTables += `
+                    </tbody>
+                </table>
+            </div>
+        `;
+    }
+
+    res.send(`
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>FunnelsEye API</title>
+            <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
+            <style>
+                :root {
+                    --bg-color: #f0f4f8;
+                    --text-color: #343a40;
+                    --table-bg: #ffffff;
+                    --header-bg: #e9ecef;
+                    --border-color: #dee2e6;
+                    --sidebar-bg: #212529;
+                    --sidebar-text: #adb5bd;
+                    --sidebar-active-bg: #4f46e5;
+                    --sidebar-active-text: #ffffff;
+                    --primary-color: #4f46e5;
+                }
+                body {
+                    font-family: 'Poppins', sans-serif;
+                    background-color: var(--bg-color);
+                    color: var(--text-color);
+                    line-height: 1.6;
+                    margin: 0;
+                    padding: 0;
+                }
+                .wrapper {
+                    display: none; /* Hidden by default */
+                }
+                .welcome-screen {
+                    display: flex;
+                    flex-direction: column;
+                    justify-content: center;
+                    align-items: center;
+                    min-height: 100vh;
+                    text-align: center;
+                    background: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%);
+                    color: #fff;
+                    padding: 20px;
+                }
+                .welcome-screen h1 {
+                    font-size: 3rem;
+                    margin-bottom: 0.5rem;
+                }
+                .welcome-screen p {
+                    font-size: 1.2rem;
+                    max-width: 600px;
+                    margin-bottom: 2rem;
+                    line-height: 1.5;
+                }
+                .explore-btn {
+                    padding: 12px 25px;
+                    font-size: 1rem;
+                    font-weight: 600;
+                    color: #fff;
+                    background-color: var(--primary-color);
+                    border: 2px solid var(--primary-color);
+                    border-radius: 8px;
+                    text-decoration: none;
+                    cursor: pointer;
+                    transition: all 0.3s ease;
+                }
+                .explore-btn:hover {
+                    background-color: transparent;
+                    color: #fff;
+                    border-color: #fff;
+                }
+                .sidebar {
+                    width: 280px;
+                    background-color: var(--sidebar-bg);
+                    color: var(--sidebar-text);
+                    padding: 20px;
+                    display: flex;
+                    flex-direction: column;
+                    box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+                    position: sticky;
+                    top: 0;
+                    align-self: flex-start;
+                }
+                .sidebar h1 {
+                    font-size: 1.5rem;
+                    color: #fff;
+                    text-align: center;
+                    margin-bottom: 20px;
+                }
+                .sidebar a {
+                    color: var(--sidebar-text);
+                    text-decoration: none;
+                    padding: 12px 15px;
+                    margin-bottom: 5px;
+                    border-radius: 6px;
+                    transition: all 0.2s ease;
+                    font-weight: 400;
+                }
+                .sidebar a:hover {
+                    background-color: #495057;
+                    color: #fff;
+                }
+                .sidebar a.active {
+                    background-color: var(--sidebar-active-bg);
+                    color: var(--sidebar-active-text);
+                    font-weight: 600;
+                    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+                }
+                .main-content {
+                    flex-grow: 1;
+                    padding: 40px;
+                }
+                h2 {
+                    text-align: center;
+                    color: var(--primary-color);
+                    margin-bottom: 20px;
+                }
+                .route-table-container {
+                    display: none;
+                }
+                .route-table-container.active {
+                    display: block;
+                    animation: fadeIn 0.5s ease-in-out;
+                }
+                table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    background-color: var(--table-bg);
+                    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+                    border-radius: 8px;
+                    overflow: hidden;
+                    text-align: left;
+                    margin-bottom: 40px;
+                }
+                th, td {
+                    padding: 15px;
+                    border-bottom: 1px solid var(--border-color);
+                }
+                th {
+                    background-color: var(--header-bg);
+                    font-weight: 600;
+                    color: #495057;
+                    text-transform: uppercase;
+                }
+                tr:hover {
+                    background-color: #f1f3f5;
+                }
+                .method {
+                    font-weight: 600;
+                    padding: 5px 10px;
+                    border-radius: 5px;
+                    color: #fff;
+                    display: inline-block;
+                }
+                .method-get { background-color: #007bff; }
+                .method-post { background-color: #28a745; }
+                .method-put { background-color: #ffc107; color: #212529; }
+                .method-delete { background-color: #dc3545; }
+                @keyframes fadeIn {
+                    from { opacity: 0; transform: translateY(20px); }
+                    to { opacity: 1; transform: translateY(0); }
+                }
+            </style>
+        </head>
+        <body>
+            <div class="welcome-screen" id="welcomeScreen">
+                <h1>FunnelsEye API is Live!</h1>
+                <p>Welcome to the API for FunnelsEye. Click the button below to view the documentation and start building your applications.</p>
+                <button id="exploreBtn" class="explore-btn">Explore API Endpoints</button>
+            </div>
+
+            <div class="wrapper" id="docsWrapper">
+                <div class="sidebar">
+                    <h1>FunnelsEye API</h1>
+                    ${sidebarLinks}
+                </div>
+                <div class="main-content">
+                    <h1>API Endpoints</h1>
+                    ${routeTables}
+                </div>
+            </div>
+            <script>
+                document.addEventListener('DOMContentLoaded', () => {
+                    const exploreBtn = document.getElementById('exploreBtn');
+                    const welcomeScreen = document.getElementById('welcomeScreen');
+                    const docsWrapper = document.getElementById('docsWrapper');
+                    const tabLinks = document.querySelectorAll('.tab-link');
+                    const tabContents = document.querySelectorAll('.tab-content');
+
+                    // Show documentation on button click
+                    exploreBtn.addEventListener('click', () => {
+                        welcomeScreen.style.display = 'none';
+                        docsWrapper.style.display = 'flex';
+                    });
+                    
+                    // Logic for switching tabs
+                    tabLinks.forEach(link => {
+                        link.addEventListener('click', (e) => {
+                            e.preventDefault();
+                            tabLinks.forEach(l => l.classList.remove('active'));
+                            tabContents.forEach(c => c.classList.remove('active'));
+
+                            e.target.classList.add('active');
+                            const targetId = e.target.getAttribute('href').substring(1);
+                            document.getElementById(targetId).classList.add('active');
+                        });
+                    });
+                });
+            </script>
+        </body>
+        </html>
+    `);
 });
 
-// --- ❌ 404 Not Found Handler (Modern, Minimalistic with Color) ---
-// This middleware will be hit if no other route has handled the request.
-app.use((req, res, next) => {
-    res.status(404).send(`
-        <!DOCTYPE html>
-        <html lang="en">
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>404 - Page Not Found | FunnelsEye</title>
-            <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
-            <style>
-                body {
-                    font-family: 'Inter', sans-serif;
-                    display: flex;
-                    justify-content: center;
-                    align-items: center;
-                    min-height: 100vh;
-                    margin: 0;
-                    background-color: #f0f4f8; /* A very light blue-grey for a soft, modern feel */
-                    color: #333;
-                    text-align: center;
-                    overflow: hidden;
-                    position: relative;
-                }
-                .container-404 {
-                    background-color: #ffffff;
-                    padding: 60px 80px;
-                    border-radius: 12px;
-                    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
-                    animation: fadeIn 0.8s ease-out;
-                    z-index: 1;
-                    max-width: 500px;
-                    margin: 20px;
-                    border: 1px solid #e0e6ed; /* Subtle border */
-                }
-                h1 {
-                    font-size: 6em;
-                    margin: 0;
-                    font-weight: 700;
-                    background: linear-gradient(90deg, #6a11cb 0%, #2575fc 100%); /* Blue-purple gradient for 404 */
-                    -webkit-background-clip: text;
-                    -webkit-text-fill-color: transparent;
-                    letter-spacing: -2px;
-                }
-                h2 {
-                    font-size: 2em;
-                    margin-top: 10px;
-                    color: #444; /* Slightly darker grey for heading */
-                    font-weight: 600;
-                }
-                p {
-                    font-size: 1.1em;
-                    margin-top: 15px;
-                    margin-bottom: 30px;
-                    color: #666; /* Medium grey for body text */
-                    line-height: 1.6;
-                }
-                a {
-                    display: inline-block;
-                    background: linear-gradient(90deg, #2575fc 0%, #6a11cb 100%); /* Reverse gradient for button */
-                    color: #fff;
-                    padding: 12px 28px;
-                    border-radius: 8px;
-                    text-decoration: none;
-                    font-weight: 600;
-                    font-size: 1em;
-                    transition: all 0.3s ease;
-                    box-shadow: 0 5px 15px rgba(0,0,0,0.15);
-                }
-                a:hover {
-                    transform: translateY(-3px);
-                    box-shadow: 0 8px 20px rgba(0,0,0,0.2);
-                    opacity: 0.9;
-                }
 
-                /* Subtle background animation */
-                .dot-grid {
-                    position: absolute;
-                    width: 100%;
-                    height: 100%;
-                    background-image: radial-gradient(#d8dee9 1px, transparent 1px); /* Lighter dots */
-                    background-size: 25px 25px; /* Slightly larger grid */
-                    opacity: 0.5;
-                    animation: pan-background 45s linear infinite; /* Slower pan */
-                }
-                @keyframes fadeIn {
-                    from { opacity: 0; transform: scale(0.95); }
-                    to { opacity: 1; transform: scale(1); }
-                }
-                @keyframes pan-background {
-                    0% { background-position: 0 0; }
-                    100% { background-position: 250px 250px; }
-                }
-            </style>
-        </head>
-        <body>
-            <div class="dot-grid"></div>
-            <div class="container-404">
-                <h1>404</h1>
-                <h2>Page Not Found</h2>
-                <p>The page you are looking for might have been removed, had its name changed, or is temporarily unavailable.</p>
-                <a href="/">Go to FunnelsEye Home</a>
-            </div>
-        </body>
-        </html>
-    `);
+// --- ❌ 404 Not Found Handler (Enhanced with animations) ---
+app.use((req, res, next) => {
+    res.status(404).send(`
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>404 - Page Not Found</title>
+            <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+            <style>
+                body {
+                    font-family: 'Inter', sans-serif;
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    min-height: 100vh;
+                    margin: 0;
+                    background-color: #1a202c;
+                    color: #e2e8f0;
+                    text-align: center;
+                    overflow: hidden;
+                    position: relative;
+                }
+                .background-grid {
+                    position: absolute;
+                    width: 100%;
+                    height: 100%;
+                    background-image: radial-gradient(circle, rgba(255,255,255,0.08) 1px, transparent 1px);
+                    background-size: 40px 40px;
+                    opacity: 0.5;
+                    animation: pan-background 30s linear infinite;
+                    z-index: 0;
+                }
+                .container-404 {
+                    background-color: rgba(30, 41, 59, 0.8);
+                    backdrop-filter: blur(8px);
+                    padding: 4rem 3rem;
+                    border-radius: 1rem;
+                    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+                    max-width: 500px;
+                    border: 1px solid #4a5568;
+                    animation: fadeIn 0.8s ease-out;
+                    z-index: 1;
+                }
+                h1 {
+                    font-size: 6rem;
+                    font-weight: 700;
+                    color: #4f46e5;
+                    margin: 0;
+                    letter-spacing: -0.1em;
+                    animation: pulsate 2s infinite ease-in-out alternate;
+                }
+                h2 {
+                    font-size: 1.5rem;
+                    font-weight: 600;
+                    margin-top: 0.5rem;
+                    color: #cbd5e0;
+                }
+                p {
+                    font-size: 1rem;
+                    margin-top: 1rem;
+                    color: #a0aec0;
+                }
+                a {
+                    display: inline-block;
+                    background-color: #4f46e5;
+                    color: #ffffff;
+                    padding: 0.75rem 1.5rem;
+                    border-radius: 0.5rem;
+                    text-decoration: none;
+                    font-weight: 600;
+                    margin-top: 2rem;
+                    transition: all 0.3s ease;
+                }
+                a:hover {
+                    background-color: #4338ca;
+                    transform: translateY(-3px);
+                }
+                @keyframes fadeIn {
+                    from { opacity: 0; transform: scale(0.9); }
+                    to { opacity: 1; transform: scale(1); }
+                }
+                @keyframes pulsate {
+                    0% { transform: scale(1); }
+                    100% { transform: scale(1.05); }
+                }
+                @keyframes pan-background {
+                    0% { background-position: 0 0; }
+                    100% { background-position: 400px 400px; }
+                }
+            </style>
+        </head>
+        <body>
+            <div class="background-grid"></div>
+            <div class="container-404">
+                <h1>404</h1>
+                <h2>Page Not Found</h2>
+                <p>The URL you requested could not be found on this server. Please check the address or return to the homepage.</p>
+                <a href="/">Go to Homepage</a>
+            </div>
+        </body>
+        </html>
+    `);
 });
 
 
@@ -337,133 +492,52 @@ const PORT = process.env.PORT || 8080;
 
 // --- Helper function to print API routes in a formatted table ---
 function printApiTable(title, routes, baseUrl) {
-    const METHOD_WIDTH = 8;
-    const PATH_WIDTH = 75;
-    const DESC_WIDTH = 45;
+    const METHOD_WIDTH = 8;
+    const PATH_WIDTH = 75;
+    const DESC_WIDTH = 45;
 
-    const totalWidth = METHOD_WIDTH + PATH_WIDTH + DESC_WIDTH + 8;
+    const totalWidth = METHOD_WIDTH + PATH_WIDTH + DESC_WIDTH + 8;
+    const hr = '─'.repeat(totalWidth);
 
-    const hr = '─'.repeat(totalWidth);
+    console.log(`\n\n--- ${title.toUpperCase()} ---`);
+    console.log(`╭${hr}╮`);
+    console.log(`│ ${'Method'.padEnd(METHOD_WIDTH)} │ ${'URL'.padEnd(PATH_WIDTH)} │ ${'Description'.padEnd(DESC_WIDTH)} │`);
+    console.log(`├${'─'.repeat(METHOD_WIDTH)}─┼─${'─'.repeat(PATH_WIDTH)}─┼─${'─'.repeat(DESC_WIDTH)}─┤`);
 
-    console.log(`\n\n${title}`);
-    console.log(`╭${hr}╮`);
-    console.log(`│ ${'Method'.padEnd(METHOD_WIDTH)} │ ${'URL'.padEnd(PATH_WIDTH)} │ ${'Description'.padEnd(DESC_WIDTH)} │`);
-    console.log(`├${'─'.repeat(METHOD_WIDTH)}─┼─${'─'.repeat(PATH_WIDTH)}─┼─${'─'.repeat(DESC_WIDTH)}─┤`);
+    routes.forEach(route => {
+        const fullPath = `${baseUrl}${route.path}`;
+        const method = route.method.padEnd(METHOD_WIDTH);
+        const path = fullPath.padEnd(PATH_WIDTH);
+        const desc = route.desc.padEnd(DESC_WIDTH);
+        console.log(`│ ${method} │ ${path} │ ${desc} │`);
+    });
 
-    routes.forEach(route => {
-        const fullPath = `${baseUrl}${route.path}`;
-        const method = route.method.padEnd(METHOD_WIDTH);
-        const path = fullPath.padEnd(PATH_WIDTH);
-        const desc = route.desc.padEnd(DESC_WIDTH);
-        console.log(`│ ${method} │ ${path} │ ${desc} │`);
-    });
-
-    console.log(`╰${hr}╯`);
+    console.log(`╰${hr}╯`);
 }
 // -----------------------------------------------------------------
 
 
 /**
- * Initializes the server by connecting to the database and starting the Express app.
- */
+ * Initializes the server by connecting to the database and starting the Express app.
+ */
 const startServer = async () => {
-    try {
-        await connectDB(); // Attempt to connect to MongoDB
+    try {
+        await connectDB();
+        server.listen(PORT, () => {
+            console.log(`\n\n✨ Server is soaring on port ${PORT}! ✨`);
+            console.log(`Local Development Base URL: http://localhost:${PORT}`);
 
-        // 🚀 Start the HTTP server (which Express is built on)
-        // This is crucial for Socket.IO to work alongside Express
-        server.listen(PORT, () => {
-            console.log(`\n\n✨ Server is soaring on port ${PORT}! ✨`);
-            console.log(`Local Development Base URL: http://localhost:${PORT}/api`);
-
-            // --- Define API Routes Data for Table Printing ---
-            const authRoutesData = [
-                { method: 'POST', path: '/signup', desc: 'User Registration' },
-                { method: 'POST', path: '/verify-otp', desc: 'OTP Verification' },
-                { method: 'POST', path: '/login', desc: 'User Login' },
-                { method: 'GET', path: '/me', desc: 'Get Current User (if implemented)' },
-            ];
-
-            const funnelRoutesData = [
-                { method: 'GET', path: '/coach/:coachId/funnels', desc: 'Get all Funnels for a Coach' },
-                { method: 'GET', path: '/coach/:coachId/funnels/:funnelId', desc: 'Get Single Funnel Details' },
-                { method: 'POST', path: '/coach/:coachId/funnels', desc: 'Create New Funnel' },
-                { method: 'PUT', path: '/coach/:coachId/funnels/:funnelId', desc: 'Update Funnel' },
-                { method: 'DELETE', path: '/coach/:coachId/funnel/:funnelId', desc: 'Delete Funnel' },
-                { method: 'GET', path: '/coach/:coachId/funnels/:funnelId/stages/:stageType', desc: 'Get Stages by Type' },
-                { method: 'POST', path: '/:funnelId/stages', desc: 'Add Stage to Funnel' },
-                { method: 'PUT', path: '/:funnelId/stages/:stageSettingsId', desc: 'Update Stage Settings' },
-                { method: 'POST', path: '/track', desc: 'Track Funnel Event' },
-                { method: 'GET', path: '/:funnelId/analytics', desc: 'Get Funnel Analytics Data' },
-            ];
-
-            const leadRoutesData = [
-                { method: 'POST', path: '', desc: 'Create New Lead' },
-                { method: 'GET', path: '', desc: 'Get All Leads (filters/pagination)' },
-                { method: 'GET', path: '/:id', desc: 'Get Single Lead by ID' },
-                { method: 'PUT', path: '/:id', desc: 'Update Lead' },
-                { method: 'DELETE', path: '/:id', desc: 'Delete Lead' },
-                { method: 'POST', path: '/:id/followup', desc: 'Add Follow-up Note' },
-                { method: 'GET', path: '/followups/upcoming', desc: 'Get Leads for Upcoming Follow-ups' },
-            ];
-
-            const automationRuleRoutesData = [
-                { method: 'POST', path: '', desc: 'Create New Automation Rule' },
-                // Add more if you implement GET, PUT, DELETE for rules in automationRuleController.js
-            ];
-
-            const whatsappRoutesData = [
-                { method: 'GET', path: '/status', desc: 'Check WhatsApp connection status' },
-                { method: 'POST', path: '/add-device', desc: 'Initiate WhatsApp device linking (QR)' },
-                { method: 'GET', path: '/get-qr', desc: 'Retrieve WhatsApp QR code for linking' },
-                { method: 'POST', path: '/logout-device', desc: 'Disconnect WhatsApp device' },
-                { method: 'POST', path: '/send-message', desc: 'Send text message via WhatsApp' },
-                { method: 'POST', path: '/send-media', desc: 'Send media message via WhatsApp' },
-            ];
-
-            const uploadRoutesData = [
-                { method: 'POST', path: '/upload', desc: 'Upload a file (PDF, Doc, Video, Audio)' },
-                // Add more if you implement GET, DELETE for files
-            ];
-
-            // --- NEW: Webpage Render Routes Data for the table ---
-            const webpageRenderRoutesData = [
-                { method: 'GET', path: '/:funnelSlug/:pageSlug', desc: 'Render a public funnel page' },
-            ];
-
-            // --- NEW: Daily Priority Feed Routes Data for the table ---
-            const dailyPriorityFeedRoutesData = [
-                { method: 'GET', path: '/daily-feed', desc: 'Get daily prioritized suggestions for coach' },
-                // --- NEW CALENDAR ROUTES ADDED HERE ---
-                { method: 'GET', path: '/:coachId/availability', desc: 'Get coach availability settings' },
-                { method: 'POST', path: '/availability', desc: 'Set or update coach availability' },
-                { method: 'GET', path: '/:coachId/available-slots', desc: 'Get bookable slots for a coach' },
-                { method: 'POST', path: '/:coachId/book', desc: 'Book a new appointment' },
-                { method: 'GET', path: '/:coachId/calendar', desc: 'Get Calendar of Coach' },
-                // --- END OF NEW CALENDAR ROUTES ---
-            ];
-            // --- END NEW ---
-
-
-            // --- Print API Endpoints Tables ---
-            printApiTable('--- 🔑 Authentication Endpoints ---', authRoutesData, '/api/auth');
-            printApiTable('--- 📈 Funnel Management & Analytics Endpoints ---', funnelRoutesData, '/api/funnels');
-            printApiTable('--- 🎯 Lead Management (CRM) Endpoints ---', leadRoutesData, '/api/leads');
-            printApiTable('--- ⚙️ Automation Rules Endpoints ---', automationRuleRoutesData, '/api/automation-rules');
-            printApiTable('--- 💬 Coach WhatsApp Integration Endpoints ---', whatsappRoutesData, '/api/coach-whatsapp');
-            printApiTable('--- 📁 File Upload Endpoints ---', uploadRoutesData, '/api/files');
-            printApiTable('--- 🌐 Public Funnel Webpage Rendering Endpoints ---', webpageRenderRoutesData, '/funnels');
-            // --- NEW: Print Daily Priority Feed Routes Table ---
-            printApiTable('--- 💡 Daily Priority Feed & Calendar Endpoints ---', dailyPriorityFeedRoutesData, '/api/coach');
-            // --- END NEW ---
-
-            console.log('\n\n---------------------------------------\n\n');
-
-        });
-    } catch (error) {
-        console.error(`\n❌ Server failed to start: ${error.message}\n`);
-        process.exit(1); // Exit process with failure
-    }
+            // Print API Endpoints Tables to console
+            for (const title in allApiRoutes) {
+                printApiTable(title, allApiRoutes[title], '');
+            }
+            
+            console.log('\n\n---------------------------------------\n\n');
+        });
+    } catch (error) {
+        console.error(`\n❌ Server failed to start: ${error.message}\n`);
+        process.exit(1);
+    }
 };
 
 // Initiate the server startup process
