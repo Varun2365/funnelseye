@@ -81,4 +81,4 @@ const CoachAvailabilitySchema = new mongoose.Schema({
 
 CoachAvailabilitySchema.index({ coachId: 1 }, { unique: true });
 
-module.exports = mongoose.model('CoachAvailability', CoachAvailabilitySchema);
+module.exports = mongoose.models.CoachAvailabilitySchema ||  mongoose.model('CoachAvailability', CoachAvailabilitySchema);

@@ -6,32 +6,37 @@ const funnelseyeEventEmitter = require('../services/eventEmitterService');
 
 // @desc    Create a new Lead
 // @route   POST /api/leads
-// @access  Private (Coaches/Admins) - Triggered by FormSubmission or manual
+// @access  Public - Triggered by a public form submission
 const createLead = async (req, res) => {
     try {
-        req.body.coachId = req.user.id; // Assuming req.user.id is set by auth middleware
+        const { coachId, funnelId } = req.body;
 
-        const funnel = await Funnel.findOne({ _id: req.body.funnelId, coachId: req.user.id });
+        if (!coachId || !funnelId) {
+            return res.status(400).json({
+                success: false,
+                message: 'Both coachId and funnelId are required to create a new lead.'
+            });
+        }
+
+        const funnel = await Funnel.findOne({ _id: funnelId, coachId });
 
         if (!funnel) {
             return res.status(404).json({
                 success: false,
-                message: `Funnel not found or you do not own this funnel.`
+                message: `Funnel not found or does not belong to the specified coach.`
             });
         }
 
         const lead = await Lead.create(req.body);
 
-        // --- UPDATED: Emit generic 'trigger' event with eventType in payload ---
         funnelseyeEventEmitter.emit('trigger', {
-            eventType: 'LEAD_CREATED', // <-- The actual event type
+            eventType: 'LEAD_CREATED',
             leadId: lead._id,
-            leadData: lead.toObject(), // Convert Mongoose document to a plain JavaScript object
-            coachId: req.user.id,
+            leadData: lead.toObject(),
+            coachId: lead.coachId,
             funnelId: lead.funnelId,
-            timestamp: new Date().toISOString() // Add timestamp for consistency
+            timestamp: new Date().toISOString()
         });
-        // --- END UPDATED ---
 
         res.status(201).json({
             success: true,
@@ -172,7 +177,6 @@ const getLead = async (req, res) => {
 // @access  Private (Coaches/Admins)
 const updateLead = async (req, res) => {
     try {
-        // --- NEW: Fetch existing lead to compare values before update ---
         const existingLead = await Lead.findOne({ _id: req.params.id, coachId: req.user.id });
 
         if (!existingLead) {
@@ -184,18 +188,16 @@ const updateLead = async (req, res) => {
 
         const oldStatus = existingLead.status;
         const oldTemperature = existingLead.temperature;
-        const oldAssignedTo = existingLead.assignedTo ? existingLead.assignedTo.toString() : null; // Convert ObjectId to string for comparison
+        const oldAssignedTo = existingLead.assignedTo ? existingLead.assignedTo.toString() : null;
 
-        // Perform the update
         const updatedLead = await Lead.findByIdAndUpdate(req.params.id, req.body, {
             new: true,
             runValidators: true
         });
 
-        // --- UPDATED: Emit generic 'trigger' events based on changes ---
         if (updatedLead.status !== oldStatus) {
             funnelseyeEventEmitter.emit('trigger', {
-                eventType: 'LEAD_STATUS_CHANGED', // <-- The actual event type
+                eventType: 'LEAD_STATUS_CHANGED',
                 leadId: updatedLead._id,
                 leadData: updatedLead.toObject(),
                 oldStatus: oldStatus,
@@ -207,7 +209,7 @@ const updateLead = async (req, res) => {
 
         if (updatedLead.temperature !== oldTemperature) {
             funnelseyeEventEmitter.emit('trigger', {
-                eventType: 'LEAD_TEMPERATURE_CHANGED', // <-- The actual event type
+                eventType: 'LEAD_TEMPERATURE_CHANGED',
                 leadId: updatedLead._id,
                 leadData: updatedLead.toObject(),
                 oldTemperature: oldTemperature,
@@ -220,16 +222,15 @@ const updateLead = async (req, res) => {
         const newAssignedTo = updatedLead.assignedTo ? updatedLead.assignedTo.toString() : null;
         if (newAssignedTo && newAssignedTo !== oldAssignedTo) {
             funnelseyeEventEmitter.emit('trigger', {
-                eventType: 'ASSIGN_LEAD_TO_COACH', // <-- The actual event type
+                eventType: 'ASSIGN_LEAD_TO_COACH',
                 leadId: updatedLead._id,
                 leadData: updatedLead.toObject(),
                 oldAssignedTo: oldAssignedTo,
                 newAssignedTo: newAssignedTo,
-                coachId: req.user.id, // This is the coach who made the assignment
+                coachId: req.user.id,
                 timestamp: new Date().toISOString()
             });
         }
-        // --- END UPDATED ---
 
         res.status(200).json({
             success: true,
@@ -280,9 +281,8 @@ const addFollowUpNote = async (req, res) => {
             });
         }
 
-        // --- NEW: Check if nextFollowUpAt is changing to emit event ---
-        const oldNextFollowUpAt = lead.nextFollowUpAt ? lead.nextFollowUpAt.toISOString() : null; // Store as ISO string for comparison
-        
+        const oldNextFollowUpAt = lead.nextFollowUpAt ? lead.nextFollowUpAt.toISOString() : null;
+
         lead.followUpHistory.push({
             note: note,
             createdBy: req.user.id,
@@ -305,17 +305,15 @@ const addFollowUpNote = async (req, res) => {
 
         await lead.save();
 
-        // Re-fetch with populated fields for the response
         lead = await Lead.findOne({ _id: req.params.id, coachId: req.user.id })
             .populate('funnelId', 'name')
             .populate('assignedTo', 'name')
             .populate('followUpHistory.createdBy', 'name');
 
-        // --- NEW: Emit event if nextFollowUpAt changed ---
         const newNextFollowUpAt = lead.nextFollowUpAt ? lead.nextFollowUpAt.toISOString() : null;
         if (newNextFollowUpAt !== oldNextFollowUpAt) {
-             funnelseyeEventEmitter.emit('trigger', {
-                eventType: 'LEAD_FOLLOWUP_SCHEDULED_OR_UPDATED', // New event type
+            funnelseyeEventEmitter.emit('trigger', {
+                eventType: 'LEAD_FOLLOWUP_SCHEDULED_OR_UPDATED',
                 leadId: lead._id,
                 leadData: lead.toObject(),
                 oldNextFollowUpAt: oldNextFollowUpAt,
@@ -324,7 +322,6 @@ const addFollowUpNote = async (req, res) => {
                 timestamp: new Date().toISOString()
             });
         }
-        // --- END NEW ---
 
         res.status(200).json({
             success: true,
@@ -405,14 +402,12 @@ const deleteLead = async (req, res) => {
 
         await lead.deleteOne();
 
-        // --- NEW: Emit LEAD_DELETED event ---
         funnelseyeEventEmitter.emit('trigger', {
-            eventType: 'LEAD_DELETED', // <-- The actual event type
+            eventType: 'LEAD_DELETED',
             leadId: lead._id,
             coachId: req.user.id,
             timestamp: new Date().toISOString()
         });
-        // --- END NEW ---
 
         res.status(200).json({
             success: true,
