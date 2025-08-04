@@ -1,14 +1,15 @@
-// D:\PRJ_YCT_Final\routes\dailyPriorityFeedRoutes.js
+// D:\\PRJ_YCT_Final\\routes\\dailyPriorityFeedRoutes.js
 
 const express = require('express');
 const { getDailyPriorityFeed } = require('../controllers/dailyPriorityFeedController');
 const { getCoachAvailability, setCoachAvailability, getAvailableSlots, bookAppointment, getCoachCalendar } = require('../controllers/coachAvailabilityController');
 const { protect, authorizeCoach } = require('../middleware/auth');
+const { updateLastActive } = require('../middleware/activityMiddleware'); // Your new middleware
 
 const router = express.Router();
 
 // Existing Daily Priority Feed route
-router.get('/daily-feed', protect, authorizeCoach('coach', 'admin'), getDailyPriorityFeed);
+router.get('/daily-feed', protect, updateLastActive, authorizeCoach('coach', 'admin'), getDailyPriorityFeed);
 
 // --- Coach Availability & Calendar Routes ---
 // @desc    Get a coach's availability (public endpoint for the booking page)
@@ -19,7 +20,7 @@ router.get('/:coachId/availability', getCoachAvailability);
 // @desc    Set or update the authenticated coach's availability
 // @route   POST /api/coach/availability
 // @access  Private (Coach)
-router.post('/availability', protect, authorizeCoach('coach', 'admin'), setCoachAvailability);
+router.post('/availability', protect, updateLastActive, authorizeCoach('coach', 'admin'), setCoachAvailability);
 
 // @desc    Calculate and return available booking slots for a coach
 // @route   GET /api/coach/:coachId/available-slots

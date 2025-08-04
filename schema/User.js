@@ -1,4 +1,3 @@
-// User Schema Update
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
@@ -38,7 +37,6 @@ const userSchema = new mongoose.Schema({
         type: String,
         trim: true,
     },
-    // --- New Fields Added ---
     country: {
         type: String,
         trim: true,
@@ -49,7 +47,6 @@ const userSchema = new mongoose.Schema({
         trim: true,
         default: ''
     },
-    // --- End New Fields ---
     role: {
         type: String,
         enum: ['coach', 'admin', 'client', 'super_admin'],
@@ -70,9 +67,16 @@ const userSchema = new mongoose.Schema({
     },
     lastLogin: {
         type: Date
+    },
+    // The new field for tracking active sessions
+    lastActiveAt: {
+        type: Date,
+        default: Date.now
     }
 }, {
-    timestamps: true
+    timestamps: true,
+    discriminatorKey: 'role',
+    collection: 'users'
 });
 
 userSchema.pre('save', async function(next) {
@@ -99,5 +103,4 @@ userSchema.methods.getSignedJwtToken = function() {
 };
 
 const User = mongoose.models.User || mongoose.model('User', userSchema);
-
 module.exports = User;

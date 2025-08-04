@@ -1,24 +1,26 @@
-// D:\PRJ_YCT_Final\routes\coachWhatsappRoutes.js
+// D:\\PRJ_YCT_Final\\routes\\coachWhatsappRoutes.js
 
 const express = require('express');
 const router = express.Router();
-// Assuming you have an authMiddleware for protecting routes
-// const { protect } = require('../middleware/authMiddleware'); // Uncomment if you use authentication
-
 // IMPORTANT: Import the whatsappManager service
-const whatsappManager = require('../services/whatsappManager'); // Adjust path if your services folder is elsewhere, e.g., '../src/services/whatsappManager'
+const whatsappManager = require('../services/whatsappManager');
 
-// --- Existing Coach WhatsApp Routes ---
+// Import authentication and activity tracking middleware
+const { protect } = require('../middleware/auth');
+const { updateLastActive } = require('../middleware/activityMiddleware');
+
+// --- Apply middleware to ALL routes below this line ---
+router.use(protect, updateLastActive);
+
 
 // @route   GET /api/coach-whatsapp/status
 // @desc    Check WhatsApp connection status for a coach
-// @access  Private (or public, depending on your auth strategy)
+// @access  Private
 router.get('/status', async (req, res) => {
-    // In a real app, you'd get coachId from req.user (after auth middleware)
-    // For now, let's assume coachId is passed as a query param for testing, or from auth
-    const coachId = req.query.coachId; // Example: /api/coach-whatsapp/status?coachId=YOUR_COACH_ID
+    // Get coachId securely from the authenticated user
+    const coachId = req.user.id;
     if (!coachId) {
-        return res.status(400).json({ success: false, message: 'Coach ID is required.' });
+        return res.status(400).json({ success: false, message: 'Coach ID is required from authenticated user.' });
     }
 
     const isConnected = whatsappManager.isClientConnected(coachId);
@@ -29,14 +31,9 @@ router.get('/status', async (req, res) => {
 // @desc    Initiate WhatsApp device linking (get QR code)
 // @access  Private
 router.post('/add-device', async (req, res) => {
-    const { coachId } = req.body;
-    if (!coachId) {
-        return res.status(400).json({ success: false, message: 'Coach ID is required.' });
-    }
-
+    const coachId = req.user.id;
     try {
         await whatsappManager.initializeClient(coachId);
-        // Initializing the client will trigger 'qr' event, which is emitted via Socket.IO
         res.status(202).json({
             success: true,
             message: 'WhatsApp client initialization initiated. Awaiting QR code via WebSocket.',
@@ -50,13 +47,9 @@ router.post('/add-device', async (req, res) => {
 
 // @route   GET /api/coach-whatsapp/get-qr
 // @desc    Retrieve the latest QR code for a coach
-// @access  Private (usually for initial fetching if WebSocket missed, or for retry)
+// @access  Private
 router.get('/get-qr', async (req, res) => {
-    const coachId = req.query.coachId;
-    if (!coachId) {
-        return res.status(400).json({ success: false, message: 'Coach ID is required.' });
-    }
-
+    const coachId = req.user.id;
     const qrCodeData = whatsappManager.getQrCode(coachId);
     if (qrCodeData) {
         res.json({ success: true, coachId, qrCodeData });
@@ -69,11 +62,7 @@ router.get('/get-qr', async (req, res) => {
 // @desc    Disconnect WhatsApp device for a coach
 // @access  Private
 router.post('/logout-device', async (req, res) => {
-    const { coachId } = req.body;
-    if (!coachId) {
-        return res.status(400).json({ success: false, message: 'Coach ID is required.' });
-    }
-
+    const coachId = req.user.id;
     try {
         await whatsappManager.logoutClient(coachId);
         res.json({ success: true, message: 'WhatsApp device logged out and session cleared.' });
@@ -87,13 +76,13 @@ router.post('/logout-device', async (req, res) => {
 
 // @route   POST /api/coach-whatsapp/send-message
 // @desc    Send a text message from coach to lead
-// @access  Private (e.g., protect with authentication middleware)
+// @access  Private
 router.post('/send-message', async (req, res) => {
-    const { coachId, recipientPhoneNumber, messageContent } = req.body;
+    const { recipientPhoneNumber, messageContent } = req.body;
+    const coachId = req.user.id;
 
-    // Basic validation
     if (!coachId || !recipientPhoneNumber || !messageContent) {
-        return res.status(400).json({ success: false, message: 'Missing required fields: coachId, recipientPhoneNumber, and messageContent.' });
+        return res.status(400).json({ success: false, message: 'Missing required fields: recipientPhoneNumber, and messageContent.' });
     }
 
     try {
@@ -107,13 +96,13 @@ router.post('/send-message', async (req, res) => {
 
 // @route   POST /api/coach-whatsapp/send-media
 // @desc    Send a media message (image, video, document) from coach to lead
-// @access  Private (e.g., protect with authentication middleware)
+// @access  Private
 router.post('/send-media', async (req, res) => {
-    const { coachId, recipientPhoneNumber, filePathOrUrl, caption } = req.body;
+    const { recipientPhoneNumber, filePathOrUrl, caption } = req.body;
+    const coachId = req.user.id;
 
-    // Basic validation
     if (!coachId || !recipientPhoneNumber || !filePathOrUrl) {
-        return res.status(400).json({ success: false, message: 'Missing required fields: coachId, recipientPhoneNumber, and filePathOrUrl.' });
+        return res.status(400).json({ success: false, message: 'Missing required fields: recipientPhoneNumber, and filePathOrUrl.' });
     }
 
     try {
@@ -124,6 +113,5 @@ router.post('/send-media', async (req, res) => {
         res.status(500).json({ success: false, message: 'Failed to send media message.', error: error.message });
     }
 });
-
 
 module.exports = router;

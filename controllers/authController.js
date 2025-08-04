@@ -1,8 +1,9 @@
 const bcrypt = require('bcryptjs');
-const User = require('../schema/User'); // Ensure path is correct
-const Otp = require('../schema/Otp');   // Ensure path is correct for your OTP model
+const User = require('../schema/User');
+const Coach = require('../schema/coachSchema'); // New import for the Coach discriminator model
+const Otp = require('../schema/Otp');
 const nodemailer = require('nodemailer');
-const jwt = require('jsonwebtoken'); // You need this import here for JWT operations
+const jwt = require('jsonwebtoken');
 
 const transporter = nodemailer.createTransport({
     service: 'gmail',
@@ -55,7 +56,6 @@ const sendOtp = async (email, otp) => {
                 </div>
             `
         };
-
         await transporter.sendMail(mailOptions);
         console.log(`OTP sent successfully to ${email}`);
         return true;
@@ -98,7 +98,6 @@ const sendTokenResponse = (user, statusCode, res) => {
 
 // --- Authentication Controllers ---
 
-// Changed from exports.signup to const signup
 const signup = async (req, res) => {
     const { name, email, password, role } = req.body;
 
@@ -126,14 +125,28 @@ const signup = async (req, res) => {
             return res.status(400).json({ success: false, message: 'User with this email already exists and is verified.' });
         }
 
-        user = await User.create({
-            name,
-            email,
-            password,
-            role,
-            isVerified: false
-        });
-
+        let newUser;
+        if (role === 'coach') {
+            // Use the Coach discriminator model for coaches
+            newUser = await Coach.create({
+                name,
+                email,
+                password,
+                role,
+                isVerified: false,
+                sponsorId: null 
+            });
+        } else {
+            // Use the base User model for all other roles
+            newUser = await User.create({
+                name,
+                email,
+                password,
+                role,
+                isVerified: false
+            });
+        }
+        
         const otp = generateOtp();
         await Otp.create({ email, otp, createdAt: new Date(), expiresAt: new Date(Date.now() + 5 * 60 * 1000) });
 
@@ -143,8 +156,9 @@ const signup = async (req, res) => {
             res.status(201).json({
                 success: true,
                 message: 'User registered successfully. An OTP has been sent to your email for verification.',
-                userId: user._id,
-                email: user.email
+                userId: newUser._id,
+                email: newUser.email,
+                role: newUser.role
             });
         } else {
             res.status(500).json({ success: false, message: 'User registered, but failed to send OTP. Please try logging in and re-requesting OTP.' });
@@ -159,88 +173,54 @@ const signup = async (req, res) => {
     }
 };
 
-// Changed from exports.verifyOtp to const verifyOtp
 const verifyOtp = async (req, res) => {
     const { email, otp } = req.body;
-
-    // 1. Basic input validation
     if (!email || !otp) {
         return res.status(400).json({ success: false, message: 'Email and OTP are required for verification.' });
     }
-
     try {
-        // 2. Find the OTP record by email and OTP.
-        // We rely on the TTL index on `createdAt` in the Otp schema to handle expiration.
-        // If an otpRecord is found, it means it exists AND has not yet been deleted by the TTL index.
         const otpRecord = await Otp.findOne({ email, otp });
-
-        // 3. Check if an OTP record was found
         if (!otpRecord) {
-            // If no record is found, it means:
-            // a) The email or OTP is incorrect.
-            // b) The OTP has expired and was automatically deleted by MongoDB's TTL.
             return res.status(400).json({ success: false, message: 'Invalid or expired OTP.' });
         }
-
-        // 4. Find the corresponding user
         const user = await User.findOne({ email });
         if (!user) {
-            // This case should ideally not happen if signup created the user first,
-            // but it's good practice for robustness.
             return res.status(404).json({ success: false, message: 'User not found for this email.' });
         }
-
-        // 5. Mark user as verified
         user.isVerified = true;
         await user.save();
-
-        // 6. Delete the used OTP record
-        // This ensures the OTP cannot be reused.
-        await Otp.deleteOne({ email }); // Delete by email because we have a unique index on email in Otp schema
-
-        // 7. Send token response (login the user)
+        await Otp.deleteOne({ email });
         sendTokenResponse(user, 200, res);
-
     } catch (error) {
         console.error('Error during OTP verification:', error.message);
         res.status(500).json({ success: false, message: 'Server error during OTP verification.' });
     }
 };
 
-// Changed from exports.login to const login
 const login = async (req, res) => {
     const { email, password } = req.body;
-
     if (!email || !password) {
         return res.status(400).json({ success: false, message: 'Please enter both email and password.' });
     }
-
     try {
         const user = await User.findOne({ email }).select('+password');
-
         if (!user) {
             return res.status(400).json({ success: false, message: 'Invalid credentials.' });
         }
-
         if (!user.isVerified) {
             return res.status(403).json({ success: false, message: 'Please verify your email first. A new OTP can be requested via signup or a dedicated resend endpoint.' });
         }
-
         const isMatch = await user.matchPassword(password);
-
         if (!isMatch) {
             return res.status(400).json({ success: false, message: 'Invalid credentials.' });
         }
-
         sendTokenResponse(user, 200, res);
-
     } catch (error) {
         console.error('Error during login:', error.message);
         res.status(500).json({ success: false, message: 'Server error during login.' });
     }
 };
 
-// Changed from exports.getMe to const getMe
 const getMe = async (req, res) => {
     try {
         const user = await User.findById(req.coachId);
@@ -254,13 +234,11 @@ const getMe = async (req, res) => {
     }
 };
 
-// Changed from exports.logout to const logout
 const logout = (req, res) => {
     res.cookie('token', 'none', {
         expires: new Date(Date.now() + 10 * 1000),
         httpOnly: true
     });
-
     res.status(200).json({ success: true, message: 'Logged out successfully.' });
 };
 

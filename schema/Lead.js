@@ -53,7 +53,6 @@ const LeadSchema = new mongoose.Schema({
     // --- LEAD QUALIFICATION FIELDS ---
     status: {
         type: String,
-        enum: ['New', 'Contacted', 'Qualified', 'Unqualified', 'Converted', 'Follow-up', 'Archived'],
         default: 'New'
     },
     leadTemperature: {

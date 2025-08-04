@@ -1,7 +1,8 @@
 const express = require('express');
 const router = express.Router();
-const authController = require('../controllers/authController'); // Import the auth controller
-const { protect } = require('../middleware/auth'); // Import 'protect' middleware
+const authController = require('../controllers/authController');
+const { protect } = require('../middleware/auth');
+const { updateLastActive } = require('../middleware/activityMiddleware'); // Your new middleware
 
 // --- Public Routes (No authentication required) ---
 
@@ -23,15 +24,19 @@ router.post('/login', authController.login);
 
 // --- Private Routes (Authentication required via JWT) ---
 
+// Use router.use() to apply both the authentication and activity tracking middleware
+// to ALL subsequent routes in this file.
+router.use(protect, updateLastActive);
+
 // Get current logged-in user's details
 // GET /api/auth/me
 // Required Body Fields: None (relies on JWT sent in Authorization header)
-router.get('/me', protect, authController.getMe);
+router.get('/me', authController.getMe);
 
 // Log out user / Clear token cookie
 // GET /api/auth/logout
 // Required Body Fields: None (relies on JWT sent in Authorization header, primarily clears server-set cookie)
-router.get('/logout', protect, authController.logout);
+router.get('/logout', authController.logout);
 
 
 module.exports = router;

@@ -28,6 +28,10 @@ const automationRuleRoutes = require('./routes/automationRuleRoutes.js');
 const uploadRoutes = require('./routes/uploadRoutes');
 const webpageRenderRoutes = require('./routes/webpageRenderRoutes');
 const dailyPriorityFeedRoutes = require('./routes/dailyPriorityFeedRoutes');
+const mlmRoutes = require('./routes/mlmRoutes');
+const coachRoutes = require('./routes/coachRoutes');
+const checkInactiveCoaches = require('./tasks/checkInactiveCoaches'); // <-- ADDED: Inactivity Checker Task
+
 
 // --- Define API Routes Data for both Console & HTML Table Generation ---
 const allApiRoutes = {
@@ -58,6 +62,17 @@ const allApiRoutes = {
         { method: 'POST', path: '/api/leads/:id/followup', desc: 'Add Follow-up Note' },
         { method: 'GET', path: '/api/leads/followups/upcoming', desc: 'Get Leads for Upcoming Follow-ups' },
     ],
+    // <--- UPDATED: MLM, Coach, and Performance Routes to the API Docs
+    '📊 MLM Network': [
+        { method: 'POST', path: '/api/mlm/downline', desc: 'Adds a new coach to the downline' },
+        { method: 'GET', path: '/api/mlm/downline/:sponsorId', desc: 'Get a coaches direct downline' },
+        { method: 'GET', path: '/api/mlm/hierarchy/:coachId', desc: 'Get the full downline hierarchy' },
+    ],
+    '💰 Performance & Commissions': [
+        { method: 'POST', path: '/api/performance/record-sale', desc: 'Record a new sale for a coach' },
+        { method: 'GET', path: '/api/performance/downline/:coachId', desc: 'Get total sales for downline coaches' },
+    ],
+    // --- END UPDATED ---
     '⚙️ Automation Rules': [
         { method: 'POST', path: '/api/automation-rules', desc: 'Create New Automation Rule' },
     ],
@@ -79,6 +94,7 @@ const allApiRoutes = {
         { method: 'GET', path: '/api/coach/:coachId/available-slots', desc: 'Get bookable slots for a coach' },
         { method: 'POST', path: '/api/coach/:coachId/book', desc: 'Book a new appointment' },
         { method: 'GET', path: '/api/coach/:coachId/calendar', desc: 'Get Calendar of Coach' },
+        { method: 'PUT', path: '/api/coach/:id/profile', desc: 'Update a coaches profile' },
     ],
     '🌐 Public Funnel Pages': [
         { method: 'GET', path: '/funnels/:funnelSlug/:pageSlug', desc: 'Render a public funnel page' },
@@ -120,6 +136,8 @@ app.use('/api/automation-rules', automationRuleRoutes);
 app.use('/api/files', uploadRoutes);
 app.use('/funnels', webpageRenderRoutes);
 app.use('/api/coach', dailyPriorityFeedRoutes);
+app.use('/api/mlm', mlmRoutes);
+app.use('/api/coach', coachRoutes);
 
 
 // 🏠 Dynamic Homepage Route (Landing page with a button)
@@ -141,7 +159,6 @@ app.get('/', (req, res) => {
                         <tr>
                             <th>Method</th>
                             <th>Endpoint</th>
-                            <th>Description</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -322,6 +339,10 @@ app.get('/', (req, res) => {
                 @keyframes fadeIn {
                     from { opacity: 0; transform: translateY(20px); }
                     to { opacity: 1; transform: translateY(0); }
+                }
+                @keyframes pan-background {
+                    0% { background-position: 0 0; }
+                    100% { background-position: 400px 400px; }
                 }
             </style>
         </head>
@@ -526,6 +547,9 @@ const startServer = async () => {
         server.listen(PORT, () => {
             console.log(`\n\n✨ Server is soaring on port ${PORT}! ✨`);
             console.log(`Local Development Base URL: http://localhost:${PORT}`);
+            
+            // --- ADDED: Start the scheduled task ---
+            checkInactiveCoaches.start();
 
             // Print API Endpoints Tables to console
             for (const title in allApiRoutes) {
