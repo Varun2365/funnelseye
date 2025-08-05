@@ -66,6 +66,11 @@ const LeadSchema = new mongoose.Schema({
         required: [true, 'Please add a lead source'],
         default: 'Web Form' // General default, can be overridden by specific forms
     },
+    targetAudience: {
+        type: String,
+        enum: ['customer', 'coach'], // <-- Changed to enum
+        default: 'customer',        // <-- Default set to 'customer'          // <-- Added required: true as enum implies a choice must be made
+    },
     notes: {
         type: String,
         maxlength: [2000, 'Notes can not be more than 2000 characters'] // Increased for initial messages + internal notes
