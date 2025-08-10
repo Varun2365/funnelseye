@@ -1,0 +1,9 @@
+@echo off
+echo Starting the main application...
+start cmd /k "npm start"
+echo Starting the Rules Engine Worker...
+start cmd /k "node worker_rules_engine.js"
+echo Starting the third file...
+start cmd /k "node worker_action_executor.js"
+echo All processes started.
+exit

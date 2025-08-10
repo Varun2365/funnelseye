@@ -1,80 +1,95 @@
 // D:\PRJ_YCT_Final\controllers\automationRuleController.js
 
-const AutomationRule = require('../schema/AutomationRule'); // Your AutomationRule Mongoose model
+const AutomationRule = require('../schema/AutomationRule');
+// The publishEvent function is not needed here
+// const { publishEvent } = require('../services/rabbitmqProducer');
 
 /**
- * @desc    Create a new Automation Rule
- * @route   POST /api/automation-rules
- * @access  Private (Coaches/Admins)
+ * @desc Create a new automation rule.
+ * @route POST /api/automation-rules
+ * @access Private (Protected by auth middleware)
  */
-const createAutomationRule = async (req, res) => {
+exports.createRule = async (req, res) => {
     try {
-        // req.user.id should be set by your authentication middleware
-        const coachId = req.user.id;
+        const { name, coachId, triggerEvent, triggerCondition, actions } = req.body;
 
-        // Extract rule details from the request body
-        const { name, description, triggerEvent, conditions, actions, isActive = true } = req.body;
-
-        // Basic validation (you might want more detailed schema validation or Joi/Yup)
-        if (!name || !triggerEvent || !actions || !Array.isArray(actions) || actions.length === 0) {
-            return res.status(400).json({
-                success: false,
-                message: 'Name, triggerEvent, and at least one action are required.'
-            });
-        }
-
-        // Validate each action within the array (basic check)
-        for (const action of actions) {
-            if (!action.type || !action.config) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Each action must have a "type" and "config" field.'
-                });
-            }
-            // Add more specific validation for action.config based on action.type if needed
-        }
-
-        // Create a new AutomationRule document
-        const newRule = new AutomationRule({
-            name,
-            description,
-            triggerEvent,
-            conditions: conditions || [], // Default to empty array if not provided
-            actions,
-            isActive,
-            createdBy: coachId // Assign the coach who is creating the rule
-        });
-
-        // Save the rule to the database
+        // Get the createdBy ID from the authenticated user
+        const createdBy = req.user.id;
+        
+        // Create the new rule in MongoDB
+        const newRule = new AutomationRule({ name, coachId, triggerEvent, triggerCondition, actions, createdBy });
         await newRule.save();
 
-        console.log(`[AutomationRuleController] New automation rule created: "${newRule.name}" (ID: ${newRule._id}) by coach ${coachId}`);
-
-        res.status(201).json({
-            success: true,
-            message: 'Automation rule created successfully.',
-            data: newRule
-        });
-
+        console.log(`[AutomationRuleController] New automation rule created: "${newRule.name}" (ID: ${newRule._id}) by coach ${newRule.coachId}.`);
+        
+        res.status(201).json(newRule);
     } catch (error) {
-        console.error('[AutomationRuleController] Error creating automation rule:', error);
-        if (error.name === 'ValidationError') {
-            const messages = Object.values(error.errors).map(val => val.message);
-            return res.status(400).json({
-                success: false,
-                message: messages.join(', ')
-            });
-        }
-        res.status(500).json({
-            success: false,
-            message: 'Server Error. Could not create automation rule.',
-            error: error.message
-        });
+        console.error('Error creating automation rule:', error);
+        res.status(500).json({ message: 'Internal server error' });
     }
 };
 
-// You can add more functions here for getRules, getRuleById, updateRule, deleteRule later
-// For now, we'll just expose createAutomationRule
-module.exports = {
-    createAutomationRule
+/**
+ * @desc Get all automation rules
+ * @route GET /api/automation-rules
+ * @access Private
+ */
+exports.getRules = async (req, res) => {
+    try {
+        const rules = await AutomationRule.find({});
+        res.status(200).json(rules);
+    } catch (error) {
+        res.status(500).json({ message: 'Internal server error' });
+    }
+};
+
+/**
+ * @desc Get a single automation rule by ID
+ * @route GET /api/automation-rules/:id
+ * @access Private
+ */
+exports.getRuleById = async (req, res) => {
+    try {
+        const rule = await AutomationRule.findById(req.params.id);
+        if (!rule) {
+            return res.status(404).json({ message: 'Rule not found' });
+        }
+        res.status(200).json(rule);
+    } catch (error) {
+        res.status(500).json({ message: 'Internal server error' });
+    }
+};
+
+/**
+ * @desc Update an existing automation rule
+ * @route PUT /api/automation-rules/:id
+ * @access Private
+ */
+exports.updateRule = async (req, res) => {
+    try {
+        const rule = await AutomationRule.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
+        if (!rule) {
+            return res.status(404).json({ message: 'Rule not found' });
+        }
+        res.status(200).json(rule);
+    } catch (error) {
+        res.status(500).json({ message: 'Internal server error' });
+    }
+};
+
+/**
+ * @desc Delete an automation rule
+ * @route DELETE /api/automation-rules/:id
+ * @access Private
+ */
+exports.deleteRule = async (req, res) => {
+    try {
+        const rule = await AutomationRule.findByIdAndDelete(req.params.id);
+        if (!rule) {
+            return res.status(404).json({ message: 'Rule not found' });
+        }
+        res.status(200).json({ message: 'Rule deleted successfully' });
+    } catch (error) {
+        res.status(500).json({ message: 'Internal server error' });
+    }
 };

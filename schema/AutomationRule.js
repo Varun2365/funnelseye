@@ -4,78 +4,116 @@ const mongoose = require('mongoose');
 
 // Sub-schema for individual actions within an automation rule
 const AutomationActionSchema = new mongoose.Schema({
-    type: { // e.g., 'SEND_WHATSAPP_MESSAGE', 'CREATE_TASK', 'UPDATE_LEAD_STATUS'
+    type: { // e.g., 'send_whatsapp_message', 'create_task', 'update_lead_status'
         type: String,
         required: true,
         enum: [
-            'SEND_WHATSAPP',
-            'CREATE_EMAIL_MESSAGE',
-            'CREATE_SMS_MESSAGE',
-            'CREATE_TASK',
-            'UPDATE_LEAD_STATUS',
-            'ASSIGN_LEAD_TO_COACH', // This action type is for the *action* of assigning
-            // Add more action types as your platform grows
+            // Lead Data & Funnel Actions
+            'update_lead_score',
+            'add_lead_tag',
+            'remove_lead_tag',
+            'add_to_funnel',
+            'move_to_funnel_stage',
+            'remove_from_funnel',
+            'update_lead_field',
+            'create_deal',
+
+            // Communication Actions
+            'send_whatsapp_message',
+            'create_email_message',
+            'create_sms_message',
+            'send_internal_notification', // e.g., to a coach's dashboard
+            'send_push_notification',
+            'schedule_drip_sequence', // starts a sequence of emails/messages
+
+            // Task & Workflow Actions
+            'create_task',
+            'create_calendar_event',
+            'add_note_to_lead',
+            'add_followup_date',
+
+            // Payment Actions
+            'create_invoice',
+            'issue_refund',
+
+            // System Actions
+            'call_webhook', // for integrating with external services
+            'trigger_another_automation'
         ]
     },
-    config: { // Specific configuration for the action (e.g., message template ID, task description)
-        type: mongoose.Schema.Types.Mixed, // Allows for flexible data structures
+    config: { // Specific configuration for the action
+        type: mongoose.Schema.Types.Mixed,
         default: {}
     }
-}, { _id: false }); // Actions are embedded, no separate _id needed
+}, { _id: false });
 
 // Main schema for an automation rule
 const AutomationRuleSchema = new mongoose.Schema({
-    name: { // Unique and descriptive name for the rule (e.g., "Welcome New Form Lead")
+    name: {
         type: String,
         required: true,
         unique: true,
         trim: true
     },
-    triggerEvent: { // The specific event that will cause this rule to fire
+    triggerEvent: {
         type: String,
         required: true,
         enum: [
-            // Core Lead Events
-            'LEAD_CREATED', // Manual lead creation by coach
-            'LEAD_CREATED_VIA_FORM', // <-- NEW: From public forms
-            'LEAD_UPDATED_VIA_FORM', // <-- NEW: From public forms
-            'LEAD_STATUS_CHANGED',
-            'LEAD_TEMPERATURE_CHANGED',
-            'LEAD_ASSIGNED_TO_CHANGED', // <-- RENAMED from ASSIGN_LEAD_TO_COACH
-            'LEAD_FOLLOW_UP_ADDED', // <-- NEW: When a coach adds a note
-            'LEAD_FOLLOWUP_SCHEDULED_OR_UPDATED', // <-- NEW: When next follow-up date changes
-            'LEAD_DELETED', // <-- NEW
+            // Lead & Customer Lifecycle
+            'lead_created',
+            'lead_status_changed',
+            'lead_temperature_changed',
+            'lead_converted_to_client',
 
-            // Other General Events (from your original list, for future use)
-            'FORM_SUBMITTED', // Generic form submission (if you want a broader trigger than just lead creation/update)
-            'APPOINTMENT_BOOKED',
-            'APPOINTMENT_REMINDER_TIME',
-            'WHATSAPP_MESSAGE_RECEIVED', // Received messages from contacts
-            'FUNNEL_STAGE_COMPLETED',
-            'PAYMENT_FAILED',
-            'SUBSCRIPTION_EXPIRED',
-            'DOWNLINE_INACTIVE',
-            'PAGE_VIEWED',
-            'BUTTON_CLICKED',
-            // ... and any other events you listed previously or find in your document
+            // Funnel & Conversion
+            'form_submitted',
+            'funnel_stage_entered',
+            'funnel_stage_exited',
+            'funnel_completed',
+
+            // Appointment & Calendar
+            'appointment_booked',
+            'appointment_rescheduled',
+            'appointment_cancelled',
+            'appointment_reminder_time',
+            'appointment_finished',
+
+            // Communication
+            'whatsapp_message_received',
+            'content_consumed',
+
+            // Task & System
+            'task_created',
+            'task_completed',
+            'task_overdue',
+
+            // Payment & Subscription
+            'payment_successful',
+            'payment_failed',
+            'payment_link_clicked',
+            'payment_abandoned',
+            'invoice_paid',
+            'subscription_created',
+            'subscription_cancelled',
+            'card_expired'
         ]
     },
-    actions: { // Array of actions to execute when the rule triggers
+    actions: {
         type: [AutomationActionSchema],
         required: true,
         default: []
     },
-    isActive: { // Toggle to enable/disable the rule without deleting it
+    isActive: {
         type: Boolean,
         default: true
     },
-    createdBy: { // Reference to the user who created this automation rule
+    createdBy: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'User', // Assuming you have a 'User' schema/model
+        ref: 'User',
         required: true
     }
 }, {
-    timestamps: true // Mongoose will automatically add `createdAt` and `updatedAt` fields
+    timestamps: true
 });
 
 const AutomationRule = mongoose.models.AutomationRule || mongoose.model('AutomationRule', AutomationRuleSchema);

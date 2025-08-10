@@ -53,4 +53,4 @@ MessageSchema.index({ lead: 1, timestamp: -1 }); // To query messages for a lead
 MessageSchema.index({ coach: 1, timestamp: -1 }); // To query all messages for a coach
 
 // Prevent Mongoose from overwriting the model if it's already defined (useful in development with hot-reloading)
-module.exports = mongoose.models.Message || mongoose.model('Message', MessageSchema);
+// module.exports = mongoose.models.Message || mongoose.model('Message', MessageSchema);

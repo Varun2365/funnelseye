@@ -1,7 +1,7 @@
 // D:\PRJ_YCT_Final\main.js
 
-// 🚀 Load environment variables
-require('dotenv').config();
+// 🚀 Load environment variables from .env file
+require('dotenv').config({ quiet: true });
 
 // 📦 Core Node.js Modules
 const express = require('express');
@@ -15,6 +15,9 @@ const { Server } = require('socket.io');
 const { connectDB } = require('./config/db');
 const { initAutomationProcessor } = require('./services/automationProcessor');
 const whatsappManager = require('./services/whatsappManager');
+const checkInactiveCoaches = require('./tasks/checkInactiveCoaches');
+// --- NEW: Import the init function from the refactored producer ---
+const { init } = require('./services/rabbitmqProducer'); 
 
 // 🛡️ Middleware Imports
 const cors = require('cors');
@@ -23,15 +26,13 @@ const cors = require('cors');
 const authRoutes = require('./routes/authRoutes.js');
 const funnelRoutes = require('./routes/funnelRoutes');
 const leadRoutes = require('./routes/leadRoutes.js');
-const coachWhatsAppRoutes = require('./routes/coachWhatsappRoutes.js');
 const automationRuleRoutes = require('./routes/automationRuleRoutes.js');
 const uploadRoutes = require('./routes/uploadRoutes');
 const webpageRenderRoutes = require('./routes/webpageRenderRoutes');
 const dailyPriorityFeedRoutes = require('./routes/dailyPriorityFeedRoutes');
 const mlmRoutes = require('./routes/mlmRoutes');
 const coachRoutes = require('./routes/coachRoutes');
-const checkInactiveCoaches = require('./tasks/checkInactiveCoaches'); // <-- ADDED: Inactivity Checker Task
-
+const metaRoutes = require('./routes/metaRoutes.js');
 
 // --- Define API Routes Data for both Console & HTML Table Generation ---
 const allApiRoutes = {
@@ -62,7 +63,6 @@ const allApiRoutes = {
         { method: 'POST', path: '/api/leads/:id/followup', desc: 'Add Follow-up Note' },
         { method: 'GET', path: '/api/leads/followups/upcoming', desc: 'Get Leads for Upcoming Follow-ups' },
     ],
-    // <--- UPDATED: MLM, Coach, and Performance Routes to the API Docs
     '📊 MLM Network': [
         { method: 'POST', path: '/api/mlm/downline', desc: 'Adds a new coach to the downline' },
         { method: 'GET', path: '/api/mlm/downline/:sponsorId', desc: 'Get a coaches direct downline' },
@@ -72,17 +72,13 @@ const allApiRoutes = {
         { method: 'POST', path: '/api/performance/record-sale', desc: 'Record a new sale for a coach' },
         { method: 'GET', path: '/api/performance/downline/:coachId', desc: 'Get total sales for downline coaches' },
     ],
-    // --- END UPDATED ---
     '⚙️ Automation Rules': [
         { method: 'POST', path: '/api/automation-rules', desc: 'Create New Automation Rule' },
     ],
-    '💬 Coach WhatsApp': [
-        { method: 'GET', path: '/api/coach-whatsapp/status', desc: 'Check WhatsApp connection status' },
-        { method: 'POST', path: '/api/coach-whatsapp/add-device', desc: 'Initiate WhatsApp device linking' },
-        { method: 'GET', path: '/api/coach-whatsapp/get-qr', desc: 'Retrieve WhatsApp QR code' },
-        { method: 'POST', path: '/api/coach-whatsapp/logout-device', desc: 'Disconnect WhatsApp device' },
-        { method: 'POST', path: '/api/coach-whatsapp/send-message', desc: 'Send text message' },
-        { method: 'POST', path: '/api/coach-whatsapp/send-media', desc: 'Send media message' },
+    '💬 WhatsApp Messaging (Meta API)': [
+        { method: 'GET', path: '/api/whatsapp/webhook', desc: 'Webhook Verification (Meta)' },
+        { method: 'POST', path: '/api/whatsapp/webhook', desc: 'Receive Incoming Messages (Meta)' },
+        { method: 'POST', path: '/api/whatsapp/send-message', desc: 'Send Outbound Message' },
     ],
     '📁 File Upload': [
         { method: 'POST', path: '/api/files/upload', desc: 'Upload a file' },
@@ -95,6 +91,7 @@ const allApiRoutes = {
         { method: 'POST', path: '/api/coach/:coachId/book', desc: 'Book a new appointment' },
         { method: 'GET', path: '/api/coach/:coachId/calendar', desc: 'Get Calendar of Coach' },
         { method: 'PUT', path: '/api/coach/:id/profile', desc: 'Update a coaches profile' },
+        { method: 'POST', path: '/api/coach/add-credits/:id', desc: 'Add credits to a coach account'}
     ],
     '🌐 Public Funnel Pages': [
         { method: 'GET', path: '/funnels/:funnelSlug/:pageSlug', desc: 'Render a public funnel page' },
@@ -103,8 +100,8 @@ const allApiRoutes = {
 // --- END ROUTES DATA ---
 
 // 🌐 Initialize Express App
-initAutomationProcessor();
-console.log('Funnelseye Automation Processor initialized.');
+// initAutomationProcessor();
+// console.log('Funnelseye Automation Processor initialized.');
 
 const app = express();
 const server = http.createServer(app);
@@ -131,16 +128,16 @@ app.use('/uploads', express.static(path.join(__dirname, 'public/uploads')));
 app.use('/api/auth', authRoutes);
 app.use('/api/funnels', funnelRoutes);
 app.use('/api/leads', leadRoutes);
-app.use('/api/coach-whatsapp', coachWhatsAppRoutes);
 app.use('/api/automation-rules', automationRuleRoutes);
 app.use('/api/files', uploadRoutes);
 app.use('/funnels', webpageRenderRoutes);
 app.use('/api/coach', dailyPriorityFeedRoutes);
 app.use('/api/mlm', mlmRoutes);
 app.use('/api/coach', coachRoutes);
+app.use('/api/whatsapp', metaRoutes);
 
 
-// 🏠 Dynamic Homepage Route (Landing page with a button)
+// 🏠 Dynamic Homepage Route (Now with side-tab view)
 app.get('/', (req, res) => {
     let routeTables = '';
     let sidebarLinks = '';
@@ -159,6 +156,7 @@ app.get('/', (req, res) => {
                         <tr>
                             <th>Method</th>
                             <th>Endpoint</th>
+                            <th>Description</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -186,198 +184,154 @@ app.get('/', (req, res) => {
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>FunnelsEye API</title>
-            <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
+            <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
             <style>
                 :root {
-                    --bg-color: #f0f4f8;
-                    --text-color: #343a40;
-                    --table-bg: #ffffff;
-                    --header-bg: #e9ecef;
-                    --border-color: #dee2e6;
-                    --sidebar-bg: #212529;
-                    --sidebar-text: #adb5bd;
-                    --sidebar-active-bg: #4f46e5;
-                    --sidebar-active-text: #ffffff;
                     --primary-color: #4f46e5;
+                    --secondary-color: #f87171;
+                    --bg-dark: #1e1e2d;
+                    --sidebar-bg: #2d2d3e;
+                    --content-bg: #1e1e2d;
+                    --text-color: #e2e8f0;
+                    --border-color: rgba(255, 255, 255, 0.1);
+                    --shadow: 0 4px 12px rgba(0,0,0,0.2);
                 }
                 body {
-                    font-family: 'Poppins', sans-serif;
-                    background-color: var(--bg-color);
+                    font-family: 'Inter', sans-serif;
+                    background-color: var(--bg-dark);
                     color: var(--text-color);
-                    line-height: 1.6;
                     margin: 0;
-                    padding: 0;
-                }
-                .wrapper {
-                    display: none; /* Hidden by default */
-                }
-                .welcome-screen {
-                    display: flex;
-                    flex-direction: column;
-                    justify-content: center;
-                    align-items: center;
                     min-height: 100vh;
-                    text-align: center;
-                    background: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%);
-                    color: #fff;
-                    padding: 20px;
+                    display: flex;
+                    overflow: hidden;
+                    position: relative; /* Ensure relative positioning for ::before */
                 }
-                .welcome-screen h1 {
-                    font-size: 3rem;
-                    margin-bottom: 0.5rem;
-                }
-                .welcome-screen p {
-                    font-size: 1.2rem;
-                    max-width: 600px;
-                    margin-bottom: 2rem;
-                    line-height: 1.5;
-                }
-                .explore-btn {
-                    padding: 12px 25px;
-                    font-size: 1rem;
-                    font-weight: 600;
-                    color: #fff;
-                    background-color: var(--primary-color);
-                    border: 2px solid var(--primary-color);
-                    border-radius: 8px;
-                    text-decoration: none;
-                    cursor: pointer;
-                    transition: all 0.3s ease;
-                }
-                .explore-btn:hover {
-                    background-color: transparent;
-                    color: #fff;
-                    border-color: #fff;
+                body::before {
+                    content: "";
+                    position: absolute;
+                    top: 0;
+                    left: 0;
+                    width: 100%;
+                    height: 100%;
+                    background-image: radial-gradient(circle, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+                    background-size: 40px 40px;
+                    opacity: 0.5;
+                    z-index: -1;
                 }
                 .sidebar {
                     width: 280px;
                     background-color: var(--sidebar-bg);
-                    color: var(--sidebar-text);
-                    padding: 20px;
+                    padding: 2rem 1.5rem;
                     display: flex;
                     flex-direction: column;
-                    box-shadow: 2px 0 5px rgba(0,0,0,0.1);
-                    position: sticky;
-                    top: 0;
-                    align-self: flex-start;
+                    border-right: 1px solid var(--border-color);
+                    box-shadow: var(--shadow);
+                    overflow-y: auto;
+                    flex-shrink: 0;
                 }
                 .sidebar h1 {
                     font-size: 1.5rem;
-                    color: #fff;
-                    text-align: center;
-                    margin-bottom: 20px;
-                }
-                .sidebar a {
-                    color: var(--sidebar-text);
-                    text-decoration: none;
-                    padding: 12px 15px;
-                    margin-bottom: 5px;
-                    border-radius: 6px;
-                    transition: all 0.2s ease;
-                    font-weight: 400;
-                }
-                .sidebar a:hover {
-                    background-color: #495057;
-                    color: #fff;
-                }
-                .sidebar a.active {
-                    background-color: var(--sidebar-active-bg);
-                    color: var(--sidebar-active-text);
-                    font-weight: 600;
-                    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-                }
-                .main-content {
-                    flex-grow: 1;
-                    padding: 40px;
-                }
-                h2 {
-                    text-align: center;
                     color: var(--primary-color);
-                    margin-bottom: 20px;
+                    margin-bottom: 2rem;
+                    border-bottom: 1px solid var(--border-color);
+                    padding-bottom: 1rem;
+                }
+                .tab-link {
+                    display: block;
+                    padding: 10px 15px;
+                    margin-bottom: 0.5rem;
+                    color: var(--text-color);
+                    text-decoration: none;
+                    font-weight: 400;
+                    border-radius: 8px;
+                    transition: all 0.2s ease;
+                }
+                .tab-link:hover, .tab-link.active {
+                    background-color: var(--primary-color);
+                    color: white;
+                    font-weight: 600;
+                }
+                .content-wrapper {
+                    padding: 2rem;
+                    flex-grow: 1;
+                    overflow-y: auto;
                 }
                 .route-table-container {
                     display: none;
+                    animation: fadeIn 0.5s ease-in-out;
                 }
                 .route-table-container.active {
                     display: block;
-                    animation: fadeIn 0.5s ease-in-out;
+                }
+                h2 {
+                    font-size: 2rem;
+                    color: var(--primary-color);
+                    margin-top: 0;
+                    margin-bottom: 1.5rem;
                 }
                 table {
                     width: 100%;
                     border-collapse: collapse;
-                    background-color: var(--table-bg);
-                    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-                    border-radius: 8px;
+                    background-color: rgba(0,0,0,0.1);
+                    border-radius: 10px;
                     overflow: hidden;
-                    text-align: left;
-                    margin-bottom: 40px;
+                    box-shadow: var(--shadow);
+                    margin-bottom: 2rem;
                 }
                 th, td {
                     padding: 15px;
+                    text-align: left;
                     border-bottom: 1px solid var(--border-color);
                 }
                 th {
-                    background-color: var(--header-bg);
+                    background-color: rgba(0,0,0,0.2);
+                    color: var(--primary-color);
                     font-weight: 600;
-                    color: #495057;
-                    text-transform: uppercase;
                 }
                 tr:hover {
-                    background-color: #f1f3f5;
+                    background-color: rgba(255,255,255,0.05);
                 }
                 .method {
-                    font-weight: 600;
                     padding: 5px 10px;
                     border-radius: 5px;
-                    color: #fff;
-                    display: inline-block;
+                    color: white;
+                    font-weight: bold;
+                    font-size: 0.8rem;
                 }
-                .method-get { background-color: #007bff; }
-                .method-post { background-color: #28a745; }
+                .method-get { background-color: #28a745; }
+                .method-post { background-color: #007bff; }
                 .method-put { background-color: #ffc107; color: #212529; }
                 .method-delete { background-color: #dc3545; }
+
+                /* Animations */
                 @keyframes fadeIn {
-                    from { opacity: 0; transform: translateY(20px); }
+                    from { opacity: 0; transform: translateY(10px); }
                     to { opacity: 1; transform: translateY(0); }
-                }
-                @keyframes pan-background {
-                    0% { background-position: 0 0; }
-                    100% { background-position: 400px 400px; }
                 }
             </style>
         </head>
         <body>
-            <div class="welcome-screen" id="welcomeScreen">
-                <h1>FunnelsEye API is Live!</h1>
-                <p>Welcome to the API for FunnelsEye. Click the button below to view the documentation and start building your applications.</p>
-                <button id="exploreBtn" class="explore-btn">Explore API Endpoints</button>
-            </div>
-
-            <div class="wrapper" id="docsWrapper">
-                <div class="sidebar">
-                    <h1>FunnelsEye API</h1>
+            <div class="sidebar">
+                <h1>FunnelsEye API</h1>
+                <div class="tabs">
                     ${sidebarLinks}
                 </div>
-                <div class="main-content">
-                    <h1>API Endpoints</h1>
+            </div>
+            <div class="content-wrapper">
+                <div id="docsWrapper">
                     ${routeTables}
                 </div>
             </div>
             <script>
                 document.addEventListener('DOMContentLoaded', () => {
-                    const exploreBtn = document.getElementById('exploreBtn');
-                    const welcomeScreen = document.getElementById('welcomeScreen');
-                    const docsWrapper = document.getElementById('docsWrapper');
                     const tabLinks = document.querySelectorAll('.tab-link');
                     const tabContents = document.querySelectorAll('.tab-content');
 
-                    // Show documentation on button click
-                    exploreBtn.addEventListener('click', () => {
-                        welcomeScreen.style.display = 'none';
-                        docsWrapper.style.display = 'flex';
-                    });
+                    if (tabLinks.length > 0) {
+                        tabLinks[0].classList.add('active');
+                        tabContents[0].classList.add('active');
+                    }
                     
-                    // Logic for switching tabs
                     tabLinks.forEach(link => {
                         link.addEventListener('click', (e) => {
                             e.preventDefault();
@@ -504,8 +458,8 @@ app.use((req, res, next) => {
 });
 
 
-// ⚠️ IMPORTANT: Error Handling Middleware
-// app.use(errorHandler); // Uncomment if you have this in place
+// ⚠️ IMPORTANT: Error Handling Middleware (This is commented out as requested)
+// app.use(errorHandler);
 
 // 🌍 Define Server Port
 const PORT = process.env.PORT || 8080;
@@ -544,11 +498,14 @@ function printApiTable(title, routes, baseUrl) {
 const startServer = async () => {
     try {
         await connectDB();
+        // --- NEW: Wait for the RabbitMQ producer connection to initialize ---
+        await init(); 
+        
         server.listen(PORT, () => {
             console.log(`\n\n✨ Server is soaring on port ${PORT}! ✨`);
             console.log(`Local Development Base URL: http://localhost:${PORT}`);
             
-            // --- ADDED: Start the scheduled task ---
+            // --- Start the scheduled task ---
             checkInactiveCoaches.start();
 
             // Print API Endpoints Tables to console

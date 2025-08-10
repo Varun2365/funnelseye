@@ -158,7 +158,7 @@ const funnelSchema = new mongoose.Schema({
 
 // Indices for uniqueness and efficient queries
 funnelSchema.index({ coachId: 1, name: 1 }, { unique: true });
-funnelSchema.index({ funnelUrl: 1 }, { unique: true });
+// funnelSchema.index({ funnelUrl: 1 }, { unique: true });
 
 funnelSchema.index(
     { _id: 1, "stages.pageId": 1 },

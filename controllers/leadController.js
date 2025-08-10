@@ -2,11 +2,11 @@
 
 const Lead = require('../schema/Lead');
 const Funnel = require('../schema/Funnel');
-const funnelseyeEventEmitter = require('../services/eventEmitterService');
+const { publishEvent } = require('../services/rabbitmqProducer');
 
-// @desc    Create a new Lead
-// @route   POST /api/leads
-// @access  Public - Triggered by a public form submission
+// @desc    Create a new Lead
+// @route   POST /api/leads
+// @access  Public - Triggered by a public form submission
 const createLead = async (req, res) => {
     try {
         const { coachId, funnelId } = req.body;
@@ -29,14 +29,22 @@ const createLead = async (req, res) => {
 
         const lead = await Lead.create(req.body);
 
-        funnelseyeEventEmitter.emit('trigger', {
-            eventType: 'LEAD_CREATED',
-            leadId: lead._id,
-            leadData: lead.toObject(),
-            coachId: lead.coachId,
-            funnelId: lead.funnelId,
-            timestamp: new Date().toISOString()
-        });
+        // --- Publish event to RabbitMQ ---
+        const eventName = 'lead_created';
+        const eventPayload = {
+            eventName: eventName,
+            payload: {
+                leadId: lead._id,
+                leadData: lead.toObject(),
+                coachId: lead.coachId,
+                funnelId: lead.funnelId,
+            }
+        };
+
+        publishEvent(eventName, eventPayload)
+            .then(() => console.log(`[Controller] Published event: ${eventName}`))
+            .catch(err => console.error(`[Controller] Failed to publish event: ${eventName}`, err));
+        // --- End of event publishing ---
 
         res.status(201).json({
             success: true,
@@ -58,9 +66,9 @@ const createLead = async (req, res) => {
     }
 };
 
-// @desc    Get all Leads for the authenticated coach with filtering, sorting, and pagination
-// @route   GET /api/leads?status=New&temperature=Hot&assignedTo=userId&nextFollowUpAt[lte]=date&sortBy=-createdAt&page=1&limit=10
-// @access  Private (Coaches/Admins)
+// @desc    Get all Leads for the authenticated coach with filtering, sorting, and pagination
+// @route   GET /api/leads?status=New&temperature=Hot&assignedTo=userId&nextFollowUpAt[lte]=date&sortBy=-createdAt&page=1&limit=10
+// @access  Private (Coaches/Admins)
 const getLeads = async (req, res) => {
     try {
         const coachId = req.user.id;
@@ -136,9 +144,9 @@ const getLeads = async (req, res) => {
     }
 };
 
-// @desc    Get single Lead by ID for the authenticated coach
-// @route   GET /api/leads/:id
-// @access  Private (Coaches/Admins)
+// @desc    Get single Lead by ID for the authenticated coach
+// @route   GET /api/leads/:id
+// @access  Private (Coaches/Admins)
 const getLead = async (req, res) => {
     try {
         const lead = await Lead.findOne({ _id: req.params.id, coachId: req.user.id })
@@ -172,9 +180,9 @@ const getLead = async (req, res) => {
     }
 };
 
-// @desc    Update Lead for the authenticated coach
-// @route   PUT /api/leads/:id
-// @access  Private (Coaches/Admins)
+// @desc    Update Lead for the authenticated coach
+// @route   PUT /api/leads/:id
+// @access  Private (Coaches/Admins)
 const updateLead = async (req, res) => {
     try {
         const existingLead = await Lead.findOne({ _id: req.params.id, coachId: req.user.id });
@@ -195,42 +203,53 @@ const updateLead = async (req, res) => {
             runValidators: true
         });
 
+        // --- Publish events based on changes to RabbitMQ ---
         if (updatedLead.status !== oldStatus) {
-            funnelseyeEventEmitter.emit('trigger', {
-                eventType: 'LEAD_STATUS_CHANGED',
-                leadId: updatedLead._id,
-                leadData: updatedLead.toObject(),
-                oldStatus: oldStatus,
-                newStatus: updatedLead.status,
-                coachId: req.user.id,
-                timestamp: new Date().toISOString()
-            });
+            const eventName = 'lead_status_changed';
+            const eventPayload = {
+                eventName: eventName,
+                payload: {
+                    leadId: updatedLead._id,
+                    leadData: updatedLead.toObject(),
+                    oldStatus: oldStatus,
+                    newStatus: updatedLead.status,
+                    coachId: req.user.id,
+                }
+            };
+            publishEvent(eventName, eventPayload).catch(err => console.error(`[Controller] Failed to publish event: ${eventName}`, err));
         }
 
         if (updatedLead.temperature !== oldTemperature) {
-            funnelseyeEventEmitter.emit('trigger', {
-                eventType: 'LEAD_TEMPERATURE_CHANGED',
-                leadId: updatedLead._id,
-                leadData: updatedLead.toObject(),
-                oldTemperature: oldTemperature,
-                newTemperature: updatedLead.temperature,
-                coachId: req.user.id,
-                timestamp: new Date().toISOString()
-            });
+            const eventName = 'lead_temperature_changed';
+            const eventPayload = {
+                eventName: eventName,
+                payload: {
+                    leadId: updatedLead._id,
+                    leadData: updatedLead.toObject(),
+                    oldTemperature: oldTemperature,
+                    newTemperature: updatedLead.temperature,
+                    coachId: req.user.id,
+                }
+            };
+            publishEvent(eventName, eventPayload).catch(err => console.error(`[Controller] Failed to publish event: ${eventName}`, err));
         }
 
         const newAssignedTo = updatedLead.assignedTo ? updatedLead.assignedTo.toString() : null;
         if (newAssignedTo && newAssignedTo !== oldAssignedTo) {
-            funnelseyeEventEmitter.emit('trigger', {
-                eventType: 'ASSIGN_LEAD_TO_COACH',
-                leadId: updatedLead._id,
-                leadData: updatedLead.toObject(),
-                oldAssignedTo: oldAssignedTo,
-                newAssignedTo: newAssignedTo,
-                coachId: req.user.id,
-                timestamp: new Date().toISOString()
-            });
+            const eventName = 'assign_lead_to_coach';
+            const eventPayload = {
+                eventName: eventName,
+                payload: {
+                    leadId: updatedLead._id,
+                    leadData: updatedLead.toObject(),
+                    oldAssignedTo: oldAssignedTo,
+                    newAssignedTo: newAssignedTo,
+                    coachId: req.user.id,
+                }
+            };
+            publishEvent(eventName, eventPayload).catch(err => console.error(`[Controller] Failed to publish event: ${eventName}`, err));
         }
+        // --- End of event publishing ---
 
         res.status(200).json({
             success: true,
@@ -258,9 +277,9 @@ const updateLead = async (req, res) => {
     }
 };
 
-// @desc    Add a follow-up note to a Lead
-// @route   POST /api/leads/:id/followup
-// @access  Private (Coaches/Admins)
+// @desc    Add a follow-up note to a Lead
+// @route   POST /api/leads/:id/followup
+// @access  Private (Coaches/Admins)
 const addFollowUpNote = async (req, res) => {
     try {
         let lead = await Lead.findOne({ _id: req.params.id, coachId: req.user.id });
@@ -312,15 +331,18 @@ const addFollowUpNote = async (req, res) => {
 
         const newNextFollowUpAt = lead.nextFollowUpAt ? lead.nextFollowUpAt.toISOString() : null;
         if (newNextFollowUpAt !== oldNextFollowUpAt) {
-            funnelseyeEventEmitter.emit('trigger', {
-                eventType: 'LEAD_FOLLOWUP_SCHEDULED_OR_UPDATED',
-                leadId: lead._id,
-                leadData: lead.toObject(),
-                oldNextFollowUpAt: oldNextFollowUpAt,
-                newNextFollowUpAt: newNextFollowUpAt,
-                coachId: req.user.id,
-                timestamp: new Date().toISOString()
-            });
+            const eventName = 'lead_followup_scheduled_or_updated';
+            const eventPayload = {
+                eventName: eventName,
+                payload: {
+                    leadId: lead._id,
+                    leadData: lead.toObject(),
+                    oldNextFollowUpAt: oldNextFollowUpAt,
+                    newNextFollowUpAt: newNextFollowUpAt,
+                    coachId: req.user.id,
+                }
+            };
+            publishEvent(eventName, eventPayload).catch(err => console.error(`[Controller] Failed to publish event: ${eventName}`, err));
         }
 
         res.status(200).json({
@@ -342,9 +364,9 @@ const addFollowUpNote = async (req, res) => {
     }
 };
 
-// @desc    Get Leads for upcoming follow-ups
-// @route   GET /api/leads/followups/upcoming?days=7
-// @access  Private (Coaches/Admins)
+// @desc    Get Leads for upcoming follow-ups
+// @route   GET /api/leads/followups/upcoming?days=7
+// @access  Private (Coaches/Admins)
 const getUpcomingFollowUps = async (req, res) => {
     try {
         const coachId = req.user.id;
@@ -386,9 +408,9 @@ const getUpcomingFollowUps = async (req, res) => {
     }
 };
 
-// @desc    Delete Lead for the authenticated coach
-// @route   DELETE /api/leads/:id
-// @access  Private (Coaches/Admins)
+// @desc    Delete Lead for the authenticated coach
+// @route   DELETE /api/leads/:id
+// @access  Private (Coaches/Admins)
 const deleteLead = async (req, res) => {
     try {
         const lead = await Lead.findOne({ _id: req.params.id, coachId: req.user.id });
@@ -402,12 +424,17 @@ const deleteLead = async (req, res) => {
 
         await lead.deleteOne();
 
-        funnelseyeEventEmitter.emit('trigger', {
-            eventType: 'LEAD_DELETED',
-            leadId: lead._id,
-            coachId: req.user.id,
-            timestamp: new Date().toISOString()
-        });
+        // --- Publish event to RabbitMQ ---
+        const eventName = 'lead_deleted';
+        const eventPayload = {
+            eventName: eventName,
+            payload: {
+                leadId: lead._id,
+                coachId: req.user.id,
+            }
+        };
+        publishEvent(eventName, eventPayload).catch(err => console.error(`[Controller] Failed to publish event: ${eventName}`, err));
+        // --- End of event publishing ---
 
         res.status(200).json({
             success: true,

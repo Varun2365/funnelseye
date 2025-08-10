@@ -1,8 +1,9 @@
-// D:\\PRJ_YCT_Final\\routes\\automationRuleRoutes.js
+// D:\PRJ_YCT_Final\routes\automationRuleRoutes.js
 
 const express = require('express');
 const router = express.Router();
-const { createAutomationRule } = require('../controllers/automationRuleController');
+// --- CORRECTED: The import name must match the controller's export ---
+const { createRule } = require('../controllers/automationRuleController'); 
 
 // Assuming you have an authentication middleware to protect routes
 const {protect} = require('../middleware/auth'); // Adjust path as per your project structure
@@ -15,7 +16,7 @@ router.use(protect, updateLastActive);
 
 // Route to create a new automation rule
 // This route is now protected, and it will update the user's lastActiveAt timestamp
-router.post('/', createAutomationRule);
+router.post('/', createRule); // <--- CORRECTED: Use the correct function name
 
 // You would add more routes here for GET, PUT, DELETE operations later:
 // router.get('/', getAutomationRules);
