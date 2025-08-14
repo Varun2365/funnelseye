@@ -31,13 +31,13 @@ const dailyPriorityFeedRoutes = require('./routes/dailyPriorityFeedRoutes');
 const mlmRoutes = require('./routes/mlmRoutes');
 const coachRoutes = require('./routes/coachRoutes');
 const metaRoutes = require('./routes/metaRoutes.js');
-const paymentRoutes = require('./routes/paymentRoutes.js'); // <-- NEW: Import payment routes
+const paymentRoutes = require('./routes/paymentRoutes.js');
 
 // --- Import the worker initialization functions ---
 const initRulesEngineWorker = require('./workers/worker_rules_engine');
 const initActionExecutorWorker = require('./workers/worker_action_executor');
 const initScheduledExecutorWorker = require('./workers/worker_scheduled_action_executor');
-const initPaymentProcessorWorker = require('./workers/worker_payment_processor'); // <-- NEW: Import payment worker
+const initPaymentProcessorWorker = require('./workers/worker_payment_processor');
 
 // --- Define API Routes Data for both Console & HTML Table Generation ---
 const allApiRoutes = {
@@ -98,7 +98,7 @@ const allApiRoutes = {
         { method: 'PUT', path: '/api/coach/:id/profile', desc: 'Update a coaches profile' },
         { method: 'POST', path: '/api/coach/add-credits/:id', desc: 'Add credits to a coach account'}
     ],
-    '💳 Payment Processing': [ // <-- NEW: Payment section
+    '💳 Payment Processing': [
         { method: 'POST', path: '/api/payments/receive', desc: 'Receive a new payment and trigger automations' },
     ],
     '🌐 Public Funnel Pages': [
@@ -140,22 +140,20 @@ app.use('/api/coach', dailyPriorityFeedRoutes);
 app.use('/api/mlm', mlmRoutes);
 app.use('/api/coach', coachRoutes);
 app.use('/api/whatsapp', metaRoutes);
-app.use('/api/payments', paymentRoutes); // <-- NEW: Mount payment routes
+app.use('/api/payments', paymentRoutes);
 
 
-// 🏠 Dynamic Homepage Route (Now with side-tab view)
+// 🏠 Dynamic Homepage Route with new UI
 app.get('/', (req, res) => {
     let routeTables = '';
     let sidebarLinks = '';
 
     for (const title in allApiRoutes) {
         const id = title.replace(/[^a-zA-Z0-9]/g, '');
-        const isActive = Object.keys(allApiRoutes)[0] === title ? 'active' : '';
-
-        sidebarLinks += `<a href="#${id}" class="tab-link ${isActive}">${title}</a>`;
+        sidebarLinks += `<a href="#${id}" class="tab-link">${title}</a>`;
 
         routeTables += `
-            <div id="${id}" class="route-table-container tab-content ${isActive}">
+            <div id="${id}" class="route-table-container">
                 <h2>${title}</h2>
                 <table>
                     <thead>
@@ -190,62 +188,159 @@ app.get('/', (req, res) => {
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>FunnelsEye API</title>
-            <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
+            <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
             <style>
                 :root {
-                    --primary-color: #4f46e5;
-                    --secondary-color: #f87171;
-                    --bg-dark: #1e1e2d;
-                    --sidebar-bg: #2d2d3e;
-                    --content-bg: #1e1e2d;
-                    --text-color: #e2e8f0;
-                    --border-color: rgba(255, 255, 255, 0.1);
-                    --shadow: 0 4px 12px rgba(0,0,0,0.2);
+                    --bg-color: #0d1117;
+                    --card-bg: rgba(22, 27, 34, 0.8);
+                    --primary-color: #58a6ff;
+                    --secondary-color: #f082ff;
+                    --text-color: #c9d1d9;
+                    --border-color: #30363d;
+                    --button-bg: #238636;
+                    --button-hover: #2ea043;
                 }
-                body {
-                    font-family: 'Inter', sans-serif;
-                    background-color: var(--bg-dark);
-                    color: var(--text-color);
+                body, html {
                     margin: 0;
-                    min-height: 100vh;
-                    display: flex;
+                    padding: 0;
+                    font-family: 'Poppins', sans-serif;
+                    background-color: var(--bg-color);
+                    color: var(--text-color);
+                    height: 100%;
                     overflow: hidden;
-                    position: relative; /* Ensure relative positioning for ::before */
                 }
-                body::before {
-                    content: "";
+                .background-bubbles {
                     position: absolute;
                     top: 0;
                     left: 0;
                     width: 100%;
                     height: 100%;
-                    background-image: radial-gradient(circle, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
-                    background-size: 40px 40px;
-                    opacity: 0.5;
-                    z-index: -1;
+                    overflow: hidden;
+                    z-index: 0;
+                }
+                .bubble {
+                    position: absolute;
+                    bottom: -100px;
+                    background-color: rgba(88, 166, 255, 0.1);
+                    border-radius: 50%;
+                    animation: floatUp 15s infinite ease-in;
+                }
+                .bubble:nth-child(1) { width: 60px; height: 60px; left: 10%; animation-duration: 12s; }
+                .bubble:nth-child(2) { width: 40px; height: 40px; left: 20%; animation-duration: 15s; animation-delay: 2s; }
+                .bubble:nth-child(3) { width: 80px; height: 80px; left: 35%; animation-duration: 18s; animation-delay: 1s; }
+                .bubble:nth-child(4) { width: 50px; height: 50px; left: 50%; animation-duration: 11s; }
+                .bubble:nth-child(5) { width: 70px; height: 70px; left: 65%; animation-duration: 16s; animation-delay: 3s; }
+                .bubble:nth-child(6) { width: 90px; height: 90px; left: 80%; animation-duration: 20s; }
+                .bubble:nth-child(7) { width: 65px; height: 65px; left: 90%; animation-duration: 13s; animation-delay: 2s; }
+                .bubble:nth-child(8) { width: 55px; height: 55px; left: 25%; animation-duration: 17s; animation-delay: 4s; }
+                .bubble:nth-child(9) { width: 75px; height: 75px; left: 45%; animation-duration: 14s; }
+                .bubble:nth-child(10) { width: 100px; height: 100px; left: 70%; animation-duration: 22s; animation-delay: 5s; }
+
+                @keyframes floatUp {
+                    0% { transform: translateY(0) rotate(0deg); opacity: 0; border-radius: 50%; }
+                    50% { opacity: 1; }
+                    100% { transform: translateY(-1000px) rotate(720deg); opacity: 0; border-radius: 20%; }
+                }
+
+                .main-content {
+                    position: relative;
+                    z-index: 1;
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    height: 100vh;
+                    flex-direction: column;
+                    transition: all 0.5s ease-in-out;
+                    padding: 2rem;
+                    box-sizing: border-box;
+                }
+                .main-content.collapsed {
+                    justify-content: flex-start;
+                    align-items: flex-start;
+                    height: auto;
+                    padding: 0;
+                }
+                .main-content.collapsed .header-section {
+                    display: none;
+                }
+                .container {
+                    background-color: var(--card-bg);
+                    backdrop-filter: blur(10px);
+                    border: 1px solid var(--border-color);
+                    border-radius: 1rem;
+                    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+                    max-width: 1200px;
+                    width: 90%;
+                    display: flex;
+                    flex-direction: column;
+                    min-height: 80vh;
+                    overflow: hidden;
+                    transition: all 0.5s ease-in-out;
+                }
+                .header-section {
+                    text-align: center;
+                    padding: 4rem 2rem;
+                    max-width: 800px;
+                    animation: fadeIn 1.5s ease-in-out;
+                }
+                .header-section h1 {
+                    font-size: 3rem;
+                    font-weight: 700;
+                    color: white;
+                    margin: 0;
+                    background: linear-gradient(45deg, var(--primary-color), var(--secondary-color));
+                    -webkit-background-clip: text;
+                    -webkit-text-fill-color: transparent;
+                    filter: drop-shadow(0 0 5px rgba(88, 166, 255, 0.3));
+                }
+                .header-section p {
+                    margin-top: 1rem;
+                    font-size: 1.1rem;
+                    color: var(--text-color);
+                }
+                #show-endpoints-btn {
+                    margin-top: 2rem;
+                    padding: 12px 28px;
+                    font-size: 1rem;
+                    font-weight: 600;
+                    color: white;
+                    background-color: var(--button-bg);
+                    border: none;
+                    border-radius: 50px;
+                    cursor: pointer;
+                    transition: all 0.3s ease;
+                    box-shadow: 0 4px 15px rgba(35, 134, 54, 0.4);
+                }
+                #show-endpoints-btn:hover {
+                    background-color: var(--button-hover);
+                    transform: translateY(-2px);
+                    box-shadow: 0 6px 20px rgba(46, 160, 67, 0.6);
+                }
+                .api-docs-container {
+                    display: none;
+                    flex: 1;
+                    transition: all 0.5s ease-in-out;
+                }
+                .api-docs-container.visible {
+                    display: flex;
                 }
                 .sidebar {
                     width: 280px;
-                    background-color: var(--sidebar-bg);
-                    padding: 2rem 1.5rem;
+                    padding: 2rem 1rem;
                     display: flex;
                     flex-direction: column;
                     border-right: 1px solid var(--border-color);
-                    box-shadow: var(--shadow);
                     overflow-y: auto;
                     flex-shrink: 0;
                 }
-                .sidebar h1 {
-                    font-size: 1.5rem;
-                    color: var(--primary-color);
-                    margin-bottom: 2rem;
-                    border-bottom: 1px solid var(--border-color);
-                    padding-bottom: 1rem;
+                .tabs {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 0.5rem;
                 }
                 .tab-link {
                     display: block;
-                    padding: 10px 15px;
-                    margin-bottom: 0.5rem;
+                    padding: 12px 15px;
                     color: var(--text-color);
                     text-decoration: none;
                     font-weight: 400;
@@ -253,8 +348,8 @@ app.get('/', (req, res) => {
                     transition: all 0.2s ease;
                 }
                 .tab-link:hover, .tab-link.active {
-                    background-color: var(--primary-color);
-                    color: white;
+                    background-color: rgba(88, 166, 255, 0.2);
+                    color: var(--primary-color);
                     font-weight: 600;
                 }
                 .content-wrapper {
@@ -270,18 +365,19 @@ app.get('/', (req, res) => {
                     display: block;
                 }
                 h2 {
-                    font-size: 2rem;
+                    font-size: 1.8rem;
                     color: var(--primary-color);
                     margin-top: 0;
                     margin-bottom: 1.5rem;
                 }
                 table {
                     width: 100%;
-                    border-collapse: collapse;
+                    border-collapse: separate;
+                    border-spacing: 0;
                     background-color: rgba(0,0,0,0.1);
                     border-radius: 10px;
                     overflow: hidden;
-                    box-shadow: var(--shadow);
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
                     margin-bottom: 2rem;
                 }
                 th, td {
@@ -293,51 +389,96 @@ app.get('/', (req, res) => {
                     background-color: rgba(0,0,0,0.2);
                     color: var(--primary-color);
                     font-weight: 600;
+                    text-transform: uppercase;
                 }
-                tr:hover {
-                    background-color: rgba(255,255,255,0.05);
-                }
+                tr:last-child td { border-bottom: none; }
+                tr:hover { background-color: rgba(255,255,255,0.05); }
                 .method {
                     padding: 5px 10px;
                     border-radius: 5px;
                     color: white;
                     font-weight: bold;
                     font-size: 0.8rem;
+                    text-transform: uppercase;
                 }
-                .method-get { background-color: #28a745; }
-                .method-post { background-color: #007bff; }
-                .method-put { background-color: #ffc107; color: #212529; }
-                .method-delete { background-color: #dc3545; }
-
+                .method-get { background-color: #2da44e; }
+                .method-post { background-color: #58a6ff; }
+                .method-put { background-color: #e3b341; }
+                .method-delete { background-color: #f85149; }
+                
                 /* Animations */
                 @keyframes fadeIn {
                     from { opacity: 0; transform: translateY(10px); }
                     to { opacity: 1; transform: translateY(0); }
                 }
+
+                @media (max-width: 768px) {
+                    .container {
+                        width: 95%;
+                        min-height: 90vh;
+                        flex-direction: column;
+                    }
+                    .main-content.collapsed {
+                        height: 100%;
+                    }
+                    .api-docs-container.visible {
+                        flex-direction: column;
+                    }
+                    .sidebar {
+                        width: 100%;
+                        border-right: none;
+                        border-bottom: 1px solid var(--border-color);
+                    }
+                    .content-wrapper {
+                        padding: 1rem;
+                    }
+                }
             </style>
         </head>
         <body>
-            <div class="sidebar">
-                <h1>FunnelsEye API</h1>
-                <div class="tabs">
-                    ${sidebarLinks}
-                </div>
+            <div class="background-bubbles">
+                <div class="bubble"></div><div class="bubble"></div><div class="bubble"></div><div class="bubble"></div><div class="bubble"></div>
+                <div class="bubble"></div><div class="bubble"></div><div class="bubble"></div><div class="bubble"></div><div class="bubble"></div>
             </div>
-            <div class="content-wrapper">
-                <div id="docsWrapper">
-                    ${routeTables}
+            <div class="main-content" id="main-content">
+                <div class="header-section" id="header-section">
+                    <h1>✨ FunnelsEye API</h1>
+                    <p>Your all-in-one backend for marketing funnels, lead management, and more.</p>
+                    <button id="show-endpoints-btn">Show API Endpoints</button>
+                </div>
+                <div class="api-docs-container" id="api-docs-container">
+                    <div class="sidebar">
+                        <div class="tabs">
+                            ${sidebarLinks}
+                        </div>
+                    </div>
+                    <div class="content-wrapper">
+                        <div id="docsWrapper">
+                            ${routeTables}
+                        </div>
+                    </div>
                 </div>
             </div>
             <script>
                 document.addEventListener('DOMContentLoaded', () => {
                     const tabLinks = document.querySelectorAll('.tab-link');
-                    const tabContents = document.querySelectorAll('.tab-content');
+                    const tabContents = document.querySelectorAll('.route-table-container');
+                    const showBtn = document.getElementById('show-endpoints-btn');
+                    const docsContainer = document.getElementById('api-docs-container');
+                    const headerSection = document.getElementById('header-section');
+                    const mainContent = document.getElementById('main-content');
 
-                    if (tabLinks.length > 0) {
-                        tabLinks[0].classList.add('active');
-                        tabContents[0].classList.add('active');
-                    }
-                    
+                    showBtn.addEventListener('click', () => {
+                        docsContainer.classList.add('visible');
+                        mainContent.classList.add('collapsed');
+                        
+                        // Set the first tab as active by default
+                        if (tabLinks.length > 0) {
+                            tabLinks[0].classList.add('active');
+                            tabContents[0].classList.add('active');
+                        }
+                    });
+
                     tabLinks.forEach(link => {
                         link.addEventListener('click', (e) => {
                             e.preventDefault();
@@ -512,6 +653,7 @@ const startServer = async () => {
         await initActionExecutorWorker();
         await initScheduledExecutorWorker();
         await initPaymentProcessorWorker();
+
         server.listen(PORT, () => {
             console.log(`\n\n✨ Server is soaring on port ${PORT}! ✨`);
             console.log(`Local Development Base URL: http://localhost:${PORT}`);
