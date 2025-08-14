@@ -2,145 +2,242 @@
 
 // --- Imports for your Mongoose Schemas ---
 const Lead = require('../schema/Lead');
-const Coach = require('../schema/Coach');
+const Coach = require('../schema/coachSchema');
 const Task = require('../schema/Task');
 const Funnel = require('../schema/Funnel');
-const { sendWhatsappMessage } = require('./whatsappService'); // Assuming a dedicated service for WhatsApp
-// --- Dummy or Placeholder Services ---
-const emailService = require('./emailService'); // Assume a service for sending emails
+const Payment = require('../schema/Payment'); 
+const { sendMessageByCoach } = require('./metaWhatsAppService');
+
+// =======================================================================
+// Section 1: Placeholder External Service Integrations
+// =======================================================================
+const emailService = {
+    sendEmail: async ({ to, subject, body, attachments }) => {
+        console.log(`[Service] Attempting to send email to ${to}...`);
+        // TODO: Add your actual email provider API call here (e.g., Nodemailer, SendGrid)
+        console.log(`[Service] Email sent successfully to ${to}.`);
+    }
+};
+
+const smsService = {
+    sendSMS: async ({ to, message }) => {
+        console.log(`[Service] Attempting to send SMS to ${to}...`);
+        // TODO: Add your actual SMS provider API call here (e.g., Twilio, Vonage)
+        console.log(`[Service] SMS sent successfully to ${to}.`);
+    }
+};
+
+const calendarService = {
+    createAppointment: async ({ coachEmail, leadEmail, leadName, appointmentTime, zoomLink }) => {
+        console.log(`[Service] Creating calendar event for coach and lead...`);
+        // TODO: Implement your Google/Outlook Calendar API integration here
+        // This should create a .ics file and a calendar event.
+        console.log(`[Service] Calendar event created for ${leadName} with coach.`);
+    }
+};
+
+const internalNotificationService = {
+    sendNotification: async ({ recipientId, message }) => {
+        console.log(`[Service] Sending internal notification to user ${recipientId}...`);
+        // TODO: Implement a real-time notification system (e.g., WebSockets)
+        console.log(`[Service] Notification sent: "${message}"`);
+    }
+};
+
+const aiService = {
+    generateCopy: async (config, eventPayload) => {
+        console.log('[Service] Generating AI copy...');
+        // TODO: Add your actual AI API call here (e.g., OpenAI)
+        const generatedCopy = "This is placeholder AI-generated copy.";
+        console.log('[Service] AI copy generated successfully.');
+        return generatedCopy;
+    },
+    detectSentiment: async (message) => {
+        console.log('[Service] Detecting sentiment...');
+        // TODO: Add your actual sentiment analysis API call here
+        const sentimentResult = 'neutral';
+        console.log('[Service] Sentiment detected successfully.');
+        return sentimentResult;
+    }
+};
+
+
+// =======================================================================
+// Section 2: Core Automation Action Functions
+// =======================================================================
 
 /**
  * Sends a WhatsApp message to a lead.
- * @param {object} config - The action configuration from the rule (e.g., message template).
- * @param {object} eventPayload - The data from the triggering event.
  */
 async function sendWhatsAppMessage(config, eventPayload) {
-    const recipientNumber = eventPayload.lead.contactInfo?.whatsapp;
-    if (!recipientNumber) {
-        throw new Error('Recipient number not found in event payload.');
-    }
-    if (!config.templateName) {
-        throw new Error('WhatsApp template name is required in action config.');
-    }
-
-    console.log(`[ActionService] Sending WhatsApp message to ${recipientNumber} using template "${config.templateName}".`);
-    await sendWhatsappMessage({
-        recipientNumber,
-        templateName: config.templateName,
-        // The eventPayload might contain template parameters, e.g., lead.name
-        templateParameters: { name: eventPayload.lead.name } 
-    });
-    console.log('[ActionService] WhatsApp message sent successfully!');
+    // Corrected to use relatedDoc
+    const leadData = eventPayload.relatedDoc; 
+    const coachId = leadData.coachId;
+    const recipientNumber = leadData.phone;
+    if (!recipientNumber) { throw new Error('Recipient phone number not found in event payload.'); }
+    
+    // You'll need to define how message content is passed from your rules
+    const messageContent = config.message || `Hi ${leadData.name}, this is an automated message.`;
+    // await sendMessageByCoach(coachId, recipientNumber, messageContent);
+    console.log(`[ActionExecutor] WhatsApp message sent to ${recipientNumber} via metaWhatsAppService.`);
 }
 
 /**
  * Sends an email to a lead.
- * @param {object} config - The action configuration from the rule (e.g., subject, body).
- * @param {object} eventPayload - The data from the triggering event.
  */
 async function sendEmail(config, eventPayload) {
-    const recipientEmail = eventPayload.lead.contactInfo?.email;
-    if (!recipientEmail) {
-        throw new Error('Recipient email not found in event payload.');
-    }
+    // Corrected to use relatedDoc
+    const leadData = eventPayload.relatedDoc; 
+    const recipientEmail = leadData.email;
+    if (!recipientEmail) { throw new Error('Recipient email not found in event payload.'); }
 
-    console.log(`[ActionService] Sending email to ${recipientEmail} with subject "${config.subject}".`);
+    // Placeholder for .ics file generation
+    const calendarInvite = config.sendCalendarInvite ? createICSFile(leadData) : null;
+
     await emailService.sendEmail({
         to: recipientEmail,
         subject: config.subject,
-        body: config.body
+        body: config.body,
+        attachments: calendarInvite ? [calendarInvite] : []
     });
-    console.log('[ActionService] Email sent successfully!');
 }
 
 /**
- * Updates a lead's score in the database.
- * @param {object} config - The action configuration from the rule (e.g., score value).
- * @param {object} eventPayload - The data from the triggering event.
+ * Helper function to create a placeholder .ics file
+ * TODO: Replace with a proper calendar library
  */
-async function updateLeadScore(config, eventPayload) {
-    const leadId = eventPayload.lead._id;
-    const { scoreIncrement } = config;
-
-    if (!leadId) {
-        throw new Error('Lead ID not found in the event payload.');
-    }
-    if (typeof scoreIncrement !== 'number') {
-        throw new Error('Invalid configuration for update_lead_score. Missing or invalid scoreIncrement.');
-    }
-    
-    console.log(`[ActionService] Updating lead score for lead with ID ${leadId} by ${scoreIncrement}...`);
-    await Lead.findByIdAndUpdate(leadId, { $inc: { score: scoreIncrement } });
-
-    console.log('[ActionService] Lead score updated successfully!');
+function createICSFile(leadData) {
+    console.log('[ActionExecutor] Generating .ics calendar file...');
+    // In a real application, you'd use a library like 'ical-generator'
+    // This is a simplified placeholder
+    return {
+        filename: 'appointment.ics',
+        content: `BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//YourCompany//Appointment\n...`
+    };
 }
 
+
 /**
- * Moves a lead to a new funnel stage.
- * @param {object} config - The action configuration from the rule (e.g., new stage name).
- * @param {object} eventPayload - The data from the triggering event.
+ * Sends a message via SMS.
  */
-async function moveLeadToFunnelStage(config, eventPayload) {
-    const leadId = eventPayload.lead._id;
-    const { newStage } = config;
-
-    if (!leadId) {
-        throw new Error('Lead ID not found in event payload.');
-    }
-    if (!newStage) {
-        throw new Error('New funnel stage is required in action config.');
-    }
-
-    console.log(`[ActionService] Moving lead ${leadId} to funnel stage "${newStage}".`);
-    await Lead.findByIdAndUpdate(leadId, { currentFunnelStage: newStage });
-
-    console.log('[ActionService] Lead moved to new funnel stage successfully!');
+async function sendSMS(config, eventPayload) {
+    // Corrected to use relatedDoc
+    const recipientNumber = eventPayload.relatedDoc.phone;
+    if (!recipientNumber) { throw new Error('Recipient phone number not found in event payload.'); }
+    if (!config.message) { throw new Error('SMS message content is required.'); }
+    await smsService.sendSMS({ to: recipientNumber, message: config.message });
 }
 
 /**
- * Creates a new task assigned to a coach for a specific lead.
- * @param {object} config - The action configuration from the rule.
- * @param {object} eventPayload - The data from the triggering event.
+ * Creates a new task for a coach or staff member.
  */
 async function createNewTask(config, eventPayload) {
-    const { lead, coach } = eventPayload;
+    // Corrected to use relatedDoc
+    const leadData = eventPayload.relatedDoc;
+    const { coachId } = leadData;
     const { taskName, taskDescription, dueDate } = config;
-
-    if (!lead || !coach) {
-        throw new Error('Required lead or coach data not found in event payload.');
-    }
-
-    console.log('[ActionExecutor] Creating a new task...');
+    if (!leadData || !coachId) { throw new Error('Lead or coach data not found.'); }
     await Task.create({
-        name: taskName,
-        description: taskDescription,
-        assignedTo: coach._id,
-        relatedLead: lead._id,
-        dueDate: dueDate
+        name: taskName, description: taskDescription, assignedTo: coachId, relatedLead: leadData._id, dueDate: dueDate
     });
-    console.log('[ActionExecutor] New task created successfully!');
 }
 
 /**
- * Adds credits to a coach's account.
- * @param {object} config - The action configuration from the rule (e.g., credit amount).
- * @param {object} eventPayload - The data from the triggering event.
+ * Creates a calendar event for the coach.
  */
-async function addCoachCredits(config, eventPayload) {
-    const coachId = eventPayload.coach._id;
-    const { creditAmount } = config;
+async function createCalendarEvent(config, eventPayload) {
+    // Corrected to use relatedDoc
+    const leadData = eventPayload.relatedDoc;
+    const { coachId } = leadData;
+    if (!leadData || !coachId) { throw new Error('Lead or coach data not found.'); }
 
-    if (!coachId) {
-        throw new Error('Coach ID not found in event payload.');
-    }
-    if (typeof creditAmount !== 'number') {
-        throw new Error('Invalid credit amount specified in action config.');
-    }
+    // Assuming a method to get coach email from coachId
+    const coach = await Coach.findById(coachId);
+    if (!coach) { throw new Error('Coach not found for calendar event.'); }
 
-    console.log(`[ActionService] Adding ${creditAmount} credits to coach ID ${coachId}.`);
-    await Coach.findByIdAndUpdate(coachId, { $inc: { credits: creditAmount } });
-    console.log('[ActionService] Coach credits updated successfully!');
+    await calendarService.createAppointment({
+        coachEmail: coach.email,
+        leadEmail: leadData.email,
+        leadName: leadData.name,
+        appointmentTime: leadData.appointment.scheduledTime,
+        zoomLink: leadData.appointment.zoomLink
+    });
 }
+
+/**
+ * Sends a notification to a coach's dashboard.
+ */
+async function sendInternalNotification(config, eventPayload) {
+    const { recipientId, message } = config;
+    if (!recipientId || !message) { throw new Error('Recipient ID and message are required for internal notification.'); }
+    await internalNotificationService.sendNotification({ recipientId, message });
+}
+
+/**
+ * Updates a specific field on the lead document.
+ */
+async function updateLeadField(config, eventPayload) {
+    // Corrected to use relatedDoc
+    const leadId = eventPayload.relatedDoc._id;
+    const { field, value } = config;
+    if (!leadId || !field) { throw new Error('Lead ID and field to update are required.'); }
+    
+    const updateObject = {};
+    updateObject[field] = value;
+    await Lead.findByIdAndUpdate(leadId, { $set: updateObject });
+}
+
+async function updateLeadScore(config, eventPayload) {
+    // Corrected to use relatedDoc
+    const leadId = eventPayload.relatedDoc._id;
+    const { scoreIncrement } = config;
+    if (!leadId) { throw new Error('Lead ID not found.'); }
+    if (typeof scoreIncrement !== 'number') { throw new Error('Invalid scoreIncrement.'); }
+    await Lead.findByIdAndUpdate(leadId, { $inc: { 'appointment.score': scoreIncrement } });
+}
+
+/**
+ * A dedicated function to handle all payment-related actions.
+ */
+async function handlePaymentActions(config, eventPayload) {
+    const { paymentId, leadId } = eventPayload;
+    if (!paymentId || !leadId) { throw new Error('Payment ID and Lead ID not found in event payload.'); }
+    
+    const lead = await Lead.findById(leadId);
+    const payment = await Payment.findById(paymentId);
+
+    if (!lead || !payment) {
+        throw new Error('Lead or Payment document not found.');
+    }
+    
+    switch(config.actionType) {
+        case 'update_lead_status':
+            lead.status = config.newStatus;
+            await lead.save();
+            console.log(`[ActionExecutor] Lead ${leadId} status updated to ${config.newStatus}.`);
+            break;
+        case 'send_confirmation_email':
+            await sendEmail({
+                to: lead.email,
+                subject: 'Payment Confirmation',
+                body: `Hello ${lead.name}, your payment of ${payment.amount} ${payment.currency} was successful!`
+            });
+            break;
+        case 'send_internal_alert':
+            await sendInternalNotification({
+                recipientId: payment.coach, // Send to the related coach
+                message: `Payment received: ${lead.name} paid ${payment.amount} ${payment.currency}.`
+            });
+            break;
+        default:
+            console.warn(`[ActionExecutor] Unhandled payment action: ${config.actionType}`);
+    }
+}
+
+
+// =======================================================================
+// Section 3: Main Action Dispatcher
+// =======================================================================
 
 /**
  * Main dispatcher to execute the correct action based on its type.
@@ -148,37 +245,44 @@ async function addCoachCredits(config, eventPayload) {
  */
 async function executeAutomationAction(payload) {
     const { actionType, config, payload: eventPayload } = payload;
-    
     console.log(`[ActionExecutor] Dispatching action: ${actionType}`);
 
-    switch (actionType) {
-        case 'send_whatsapp_message':
-            await sendWhatsAppMessage(config, eventPayload);
-            break;
-        
-        case 'send_email':
-            await sendEmail(config, eventPayload);
-            break;
-
-        case 'update_lead_score':
-            await updateLeadScore(config, eventPayload);
-            break;
-        
-        case 'move_lead_to_stage':
-            await moveLeadToFunnelStage(config, eventPayload);
-            break;
-            
-        case 'create_new_task':
-            await createNewTask(config, eventPayload);
-            break;
-        
-        case 'add_coach_credits':
-            await addCoachCredits(config, eventPayload);
-            break;
-        
-        default:
-            console.error(`[ActionExecutor] Unknown action type: ${actionType}`);
-            throw new Error(`Unknown action type: ${actionType}`); // Throwing an error here will NACK the message
+    try {
+        switch (actionType) {
+            case 'send_whatsapp_message':
+                await sendWhatsAppMessage(config, eventPayload);
+                break;
+            case 'send_email':
+                await sendEmail(config, eventPayload);
+                break;
+            case 'send_sms':
+                await sendSMS(config, eventPayload);
+                break;
+            case 'update_lead_score':
+                await updateLeadScore(config, eventPayload);
+                break;
+            case 'create_new_task':
+                await createNewTask(config, eventPayload);
+                break;
+            case 'send_internal_notification':
+                await sendInternalNotification(config, eventPayload);
+                break;
+            case 'create_calendar_event':
+                await createCalendarEvent(config, eventPayload);
+                break;
+            case 'update_lead_field':
+                await updateLeadField(config, eventPayload);
+                break;
+            // Case for handling all payment-related actions
+            case 'handle_payment_actions':
+                await handlePaymentActions(config, eventPayload);
+                break;
+            default:
+                throw new Error(`Unknown action type: ${actionType}`);
+        }
+    } catch (error) {
+        console.error(`[ActionExecutor] Failed to execute action "${actionType}":`, error.message);
+        throw error;
     }
 }
 

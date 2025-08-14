@@ -1,38 +1,42 @@
-// D:\\PRJ_YCT_Final\\routes\\dailyPriorityFeedRoutes.js
+// D:\PRJ_YCT_Final\routes\dailyPriorityFeedRoutes.js
 
 const express = require('express');
 const { getDailyPriorityFeed } = require('../controllers/dailyPriorityFeedController');
-const { getCoachAvailability, setCoachAvailability, getAvailableSlots, bookAppointment, getCoachCalendar } = require('../controllers/coachAvailabilityController');
+const { 
+    getCoachAvailability, 
+    setCoachAvailability, 
+    getAvailableSlots, 
+    bookAppointment, 
+    getCoachCalendar 
+} = require('../controllers/coachAvailabilityController');
+const { 
+    initiateBookingRecovery, 
+    cancelBookingRecovery 
+} = require('../controllers/bookingRecoveryController'); // <-- NEW: Import booking recovery controller
 const { protect, authorizeCoach } = require('../middleware/auth');
-const { updateLastActive } = require('../middleware/activityMiddleware'); // Your new middleware
+const { updateLastActive } = require('../middleware/activityMiddleware');
 
 const router = express.Router();
 
-// Existing Daily Priority Feed route
+// --- Main Coach & Feed Routes ---
 router.get('/daily-feed', protect, updateLastActive, authorizeCoach('coach', 'admin'), getDailyPriorityFeed);
 
 // --- Coach Availability & Calendar Routes ---
-// @desc    Get a coach's availability (public endpoint for the booking page)
-// @route   GET /api/coach/:coachId/availability
-// @access  Public
 router.get('/:coachId/availability', getCoachAvailability);
-
-// @desc    Set or update the authenticated coach's availability
-// @route   POST /api/coach/availability
-// @access  Private (Coach)
 router.post('/availability', protect, updateLastActive, authorizeCoach('coach', 'admin'), setCoachAvailability);
-
-// @desc    Calculate and return available booking slots for a coach
-// @route   GET /api/coach/:coachId/available-slots
-// @access  Public
 router.get('/:coachId/available-slots', getAvailableSlots);
-
-// @desc    Book an appointment for a coach
-// @route   POST /api/coach/:coachId/book
-// @access  Public (No authentication needed for the lead)
 router.post('/:coachId/book', bookAppointment);
-// @desc    Get a full calendar view for a coach
-// @route   GET /api/coach/:coachId/calendar
-// @access  Public (or Private with protect middleware)
 router.get('/:coachId/calendar', getCoachCalendar);
+
+// --- NEW: Booking Recovery Routes ---
+// @desc    Initiate a booking recovery session when a user visits the booking page
+// @route   POST /api/coach/booking-recovery/initiate
+// @access  Public
+router.post('/booking-recovery/initiate', initiateBookingRecovery);
+
+// @desc    Cancel the recovery session upon successful booking
+// @route   POST /api/coach/booking-recovery/cancel
+// @access  Public
+router.post('/booking-recovery/cancel', cancelBookingRecovery);
+
 module.exports = router;

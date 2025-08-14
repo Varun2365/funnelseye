@@ -4,7 +4,7 @@ const mongoose = require('mongoose');
 
 // Sub-schema for individual actions within an automation rule
 const AutomationActionSchema = new mongoose.Schema({
-    type: { // e.g., 'send_whatsapp_message', 'create_task', 'update_lead_status'
+    type: {
         type: String,
         required: true,
         enum: [
@@ -22,9 +22,9 @@ const AutomationActionSchema = new mongoose.Schema({
             'send_whatsapp_message',
             'create_email_message',
             'create_sms_message',
-            'send_internal_notification', // e.g., to a coach's dashboard
+            'send_internal_notification',
             'send_push_notification',
-            'schedule_drip_sequence', // starts a sequence of emails/messages
+            'schedule_drip_sequence',
 
             // Task & Workflow Actions
             'create_task',
@@ -37,11 +37,11 @@ const AutomationActionSchema = new mongoose.Schema({
             'issue_refund',
 
             // System Actions
-            'call_webhook', // for integrating with external services
+            'call_webhook',
             'trigger_another_automation'
         ]
     },
-    config: { // Specific configuration for the action
+    config: {
         type: mongoose.Schema.Types.Mixed,
         default: {}
     }
@@ -72,7 +72,7 @@ const AutomationRuleSchema = new mongoose.Schema({
             'funnel_completed',
 
             // Appointment & Calendar
-            'appointment_booked',
+            'appointment_booked', // NEW TRIGGER
             'appointment_rescheduled',
             'appointment_cancelled',
             'appointment_reminder_time',

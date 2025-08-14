@@ -4,52 +4,98 @@ const amqp = require('amqplib');
 
 let connection;
 let channel;
-const EXCHANGE_NAME = 'funnelseye_events';
+const DEFAULT_EXCHANGE_NAME = 'funnelseye_events';
 
 /**
  * Initializes the RabbitMQ connection and channel.
  */
 const init = async () => {
     try {
-        console.log('[RabbitMQ Producer] Attempting to connect to RabbitMQ...');
+        console.log('[RabbitMQ Service] Attempting to connect to RabbitMQ...');
         connection = await amqp.connect(process.env.RABBITMQ_URL || 'amqp://localhost:5672');
         channel = await connection.createChannel();
 
-        // Assert an exchange to which messages will be published. This exchange should be 'topic' type.
-        await channel.assertExchange(EXCHANGE_NAME, 'topic', { durable: true });
+        await channel.assertExchange(DEFAULT_EXCHANGE_NAME, 'topic', { durable: true });
 
-        console.log(`[RabbitMQ Producer] Connected and asserted exchange "${EXCHANGE_NAME}"`);
-        
-        // Add a listener to handle connection close events
+        console.log(`[RabbitMQ Service] Connected and asserted exchange "${DEFAULT_EXCHANGE_NAME}"`);
+
         connection.on('close', () => {
-            console.error('[RabbitMQ Producer] Connection closed unexpectedly. Attempting to reconnect...');
-            setTimeout(init, 5000); // Attempt to reconnect every 5 seconds
+            console.error('[RabbitMQ Service] Connection closed unexpectedly. Attempting to reconnect...');
+            setTimeout(init, 5000);
         });
-        
+
     } catch (error) {
-        console.error('[RabbitMQ Producer] Failed to connect or initialize:', error.message);
-        // Implement a retry mechanism to handle initial connection failures
+        console.error('[RabbitMQ Service] Failed to connect or initialize:', error.message);
         setTimeout(init, 5000);
     }
 };
 
 /**
- * Publishes an event to the RabbitMQ exchange.
- * @param {string} routingKey - The routing key for the event (e.g., 'lead_created').
- * @param {object} payload - The data payload for the event.
+ * Publishes an event to a specified RabbitMQ exchange.
+ * This function is now backward-compatible and can handle both 2 and 3 arguments.
+ *
+ * @param {string} exchangeNameOrRoutingKey - The exchange name or the routing key (if no exchange is specified).
+ * @param {string|object} routingKeyOrPayload - The routing key or the payload (if no exchange is specified).
+ * @param {object} [payload] - The data payload for the event (optional).
  */
-const publishEvent = async (routingKey, payload) => {
+const publishEvent = async (...args) => {
     if (!channel) {
-        console.error(`[RabbitMQ Producer] Channel not initialized. Cannot publish event "${routingKey}".`);
+        console.error(`[RabbitMQ Service] Channel not initialized. Cannot publish event.`);
+        return;
+    }
+
+    let exchangeName, routingKey, payload;
+
+    // Check if the first argument is a string and the second is an object.
+    // This is a heuristic to guess if the old signature (routingKey, payload) is being used.
+    if (typeof args[0] === 'string' && typeof args[1] === 'object' && args.length === 2) {
+        exchangeName = DEFAULT_EXCHANGE_NAME;
+        routingKey = args[0];
+        payload = args[1];
+    } else if (args.length === 3) {
+        [exchangeName, routingKey, payload] = args;
+    } else {
+        console.error(`[RabbitMQ Service] Invalid number of arguments provided to publishEvent.`);
         return;
     }
     
     try {
         const message = JSON.stringify(payload);
-        channel.publish(EXCHANGE_NAME, routingKey, Buffer.from(message));
-        console.log(`[RabbitMQ Producer] Event published: "${routingKey}"`);
+        channel.publish(exchangeName, routingKey, Buffer.from(message), { persistent: true });
+        console.log(`[RabbitMQ Service] Event published to "${exchangeName}" with routing key: "${routingKey}"`);
     } catch (error) {
-        console.error(`[RabbitMQ Producer] Failed to publish event "${routingKey}":`, error.message);
+        console.error(`[RabbitMQ Service] Failed to publish event "${routingKey}":`, error.message);
+    }
+};
+
+/**
+ * Consumes events from a specific queue and handles them.
+ * @param {string} exchange - The exchange name to bind to.
+ * @param {string} routingKey - The routing key pattern to listen for.
+ * @param {Function} handler - The message handler function.
+ * @param {string} queueName - The name of the queue to use.
+ */
+const consumeEvents = async (exchange, routingKey, handler, queueName) => {
+    if (!channel) {
+        console.error('[RabbitMQ Service] Channel not initialized. Cannot consume events.');
+        return;
+    }
+
+    try {
+        await channel.assertExchange(exchange, 'topic', { durable: true });
+        const q = await channel.assertQueue(queueName, { durable: true });
+        await channel.bindQueue(q.queue, exchange, routingKey);
+
+        console.log(`[RabbitMQ Service] Waiting for events in queue "${q.queue}" with routing key "${routingKey}"`);
+
+        await channel.consume(q.queue, (msg) => {
+            if (msg) {
+                handler(msg);
+                channel.ack(msg);
+            }
+        }, { noAck: false });
+    } catch (error) {
+        console.error(`[RabbitMQ Service] Error consuming events:`, error.message);
     }
 };
 
@@ -60,9 +106,9 @@ const closeConnection = async () => {
     if (connection) {
         try {
             await connection.close();
-            console.log('[RabbitMQ Producer] Connection closed.');
+            console.log('[RabbitMQ Service] Connection closed.');
         } catch (error) {
-            console.error('[RabbitMQ Producer] Error closing connection:', error.message);
+            console.error('[RabbitMQ Service] Error closing connection:', error.message);
         }
     }
 };
@@ -72,5 +118,6 @@ process.on('SIGINT', closeConnection);
 
 module.exports = {
     init,
-    publishEvent
+    publishEvent,
+    consumeEvents,
 };

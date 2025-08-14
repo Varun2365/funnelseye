@@ -13,11 +13,9 @@ const { Server } = require('socket.io');
 
 // ⚙️ Configuration & Utilities
 const { connectDB } = require('./config/db');
-const { initAutomationProcessor } = require('./services/automationProcessor');
 const whatsappManager = require('./services/whatsappManager');
 const checkInactiveCoaches = require('./tasks/checkInactiveCoaches');
-// --- NEW: Import the init function from the refactored producer ---
-const { init } = require('./services/rabbitmqProducer'); 
+const { init } = require('./services/rabbitmqProducer');
 
 // 🛡️ Middleware Imports
 const cors = require('cors');
@@ -33,6 +31,13 @@ const dailyPriorityFeedRoutes = require('./routes/dailyPriorityFeedRoutes');
 const mlmRoutes = require('./routes/mlmRoutes');
 const coachRoutes = require('./routes/coachRoutes');
 const metaRoutes = require('./routes/metaRoutes.js');
+const paymentRoutes = require('./routes/paymentRoutes.js'); // <-- NEW: Import payment routes
+
+// --- Import the worker initialization functions ---
+const initRulesEngineWorker = require('./workers/worker_rules_engine');
+const initActionExecutorWorker = require('./workers/worker_action_executor');
+const initScheduledExecutorWorker = require('./workers/worker_scheduled_action_executor');
+const initPaymentProcessorWorker = require('./workers/worker_payment_processor'); // <-- NEW: Import payment worker
 
 // --- Define API Routes Data for both Console & HTML Table Generation ---
 const allApiRoutes = {
@@ -93,6 +98,9 @@ const allApiRoutes = {
         { method: 'PUT', path: '/api/coach/:id/profile', desc: 'Update a coaches profile' },
         { method: 'POST', path: '/api/coach/add-credits/:id', desc: 'Add credits to a coach account'}
     ],
+    '💳 Payment Processing': [ // <-- NEW: Payment section
+        { method: 'POST', path: '/api/payments/receive', desc: 'Receive a new payment and trigger automations' },
+    ],
     '🌐 Public Funnel Pages': [
         { method: 'GET', path: '/funnels/:funnelSlug/:pageSlug', desc: 'Render a public funnel page' },
     ],
@@ -100,9 +108,6 @@ const allApiRoutes = {
 // --- END ROUTES DATA ---
 
 // 🌐 Initialize Express App
-// initAutomationProcessor();
-// console.log('Funnelseye Automation Processor initialized.');
-
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
@@ -135,6 +140,7 @@ app.use('/api/coach', dailyPriorityFeedRoutes);
 app.use('/api/mlm', mlmRoutes);
 app.use('/api/coach', coachRoutes);
 app.use('/api/whatsapp', metaRoutes);
+app.use('/api/payments', paymentRoutes); // <-- NEW: Mount payment routes
 
 
 // 🏠 Dynamic Homepage Route (Now with side-tab view)
@@ -494,13 +500,18 @@ function printApiTable(title, routes, baseUrl) {
 
 /**
  * Initializes the server by connecting to the database and starting the Express app.
+ * It also starts all necessary worker processes.
  */
 const startServer = async () => {
     try {
         await connectDB();
-        // --- NEW: Wait for the RabbitMQ producer connection to initialize ---
-        await init(); 
+        await init();
         
+        // --- Start all the worker processes here with await ---
+        await initRulesEngineWorker();
+        await initActionExecutorWorker();
+        await initScheduledExecutorWorker();
+        await initPaymentProcessorWorker();
         server.listen(PORT, () => {
             console.log(`\n\n✨ Server is soaring on port ${PORT}! ✨`);
             console.log(`Local Development Base URL: http://localhost:${PORT}`);
