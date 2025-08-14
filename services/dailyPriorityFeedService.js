@@ -1,21 +1,45 @@
 // D:\PRJ_YCT_Final\services\dailyPriorityFeedService.js
 
 const Lead = require('../schema/Lead');
+const Appointment = require('../schema/Appointment'); // <-- ADD THIS
 
 const generateDailyPriorityFeed = async (coachId) => {
     const feedItems = [];
     const now = new Date();
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const endOfToday = new Date(startOfToday.getTime() + (24 * 60 * 60 * 1000));
     const twentyFourHoursAgo = new Date(now.getTime() - (24 * 60 * 60 * 1000));
     const seventyTwoHoursAgo = new Date(now.getTime() - (72 * 60 * 60 * 1000));
     const fifteenDaysAgo = new Date(now.getTime() - (15 * 24 * 60 * 60 * 1000));
 
+    // Priority 0: Today's Appointments (New)
+    try {
+        const todayAppointments = await Appointment.find({
+            coachId: coachId,
+            startTime: { $gte: startOfToday, $lt: endOfToday }
+        }).sort('startTime');
+
+        todayAppointments.forEach(appt => {
+            feedItems.push({
+                type: 'Appointment',
+                priority: 0,
+                title: `Appointment with Lead ${appt.leadId}`,
+                description: `Scheduled for: ${appt.startTime.toLocaleString()} for ${appt.duration} minutes.`,
+                leadId: appt.leadId,
+                appointmentId: appt._id,
+                startTime: appt.startTime
+            });
+        });
+    } catch (error) {
+        console.error('[DailyPriorityFeedService] Error fetching today\'s appointments:', error.message);
+    }
+    
     // Priority 1: Overdue Lead Follow-ups
     try {
         const overdueFollowUps = await Lead.find({
             coachId: coachId,
             status: { $in: ['New', 'Contacted', 'Follow-up', 'Qualified'] },
-            nextFollowUpAt: { $lt: startOfToday, $ne: null } // Due date is *before* today
+            nextFollowUpAt: { $lt: startOfToday, $ne: null }
         }).sort('nextFollowUpAt');
 
         overdueFollowUps.forEach(lead => {
@@ -38,7 +62,7 @@ const generateDailyPriorityFeed = async (coachId) => {
         const todayFollowUps = await Lead.find({
             coachId: coachId,
             status: { $in: ['New', 'Contacted', 'Follow-up', 'Qualified'] },
-            nextFollowUpAt: { $gte: startOfToday, $lte: now, $ne: null } // Due *today* but not yet overdue
+            nextFollowUpAt: { $gte: startOfToday, $lt: endOfToday, $ne: null }
         }).sort('nextFollowUpAt');
 
         todayFollowUps.forEach(lead => {
@@ -55,6 +79,8 @@ const generateDailyPriorityFeed = async (coachId) => {
     } catch (error) {
         console.error('[DailyPriorityFeedService] Error fetching today\'s follow-ups:', error.message);
     }
+    
+    // ... (rest of the code for Priority 3 and 4 remains the same) ...
 
     // Priority 3: New "Hot" Leads (Created/Updated recently)
     try {
@@ -62,9 +88,9 @@ const generateDailyPriorityFeed = async (coachId) => {
             coachId: coachId,
             leadTemperature: 'Hot',
             status: { $in: ['New', 'Contacted'] },
-            $or: [ // Either created recently OR leadTemperature/status was updated recently
+            $or: [
                 { createdAt: { $gte: seventyTwoHoursAgo } },
-                { updatedAt: { $gte: twentyFourHoursAgo } } // Assuming updatedAt reflects significant changes
+                { updatedAt: { $gte: twentyFourHoursAgo } }
             ]
         }).sort('-createdAt');
 
@@ -88,9 +114,9 @@ const generateDailyPriorityFeed = async (coachId) => {
         const staleLeads = await Lead.find({
             coachId: coachId,
             leadTemperature: { $in: ['Hot', 'Warm'] },
-            status: { $nin: ['Converted', 'Unqualified'] }, // Not already closed
-            updatedAt: { $lt: fifteenDaysAgo } // No activity/update in 15+ days
-        }).sort('updatedAt'); // Oldest stale leads first
+            status: { $nin: ['Converted', 'Unqualified'] },
+            updatedAt: { $lt: fifteenDaysAgo }
+        }).sort('updatedAt');
 
         staleLeads.forEach(lead => {
             feedItems.push({

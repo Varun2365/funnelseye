@@ -8,7 +8,7 @@ const Lead = require('../schema/Lead');
 const Coach = require('../schema/coachSchema'); // Corrected import path for Coach schema
 const AutomationRule = require('../schema/AutomationRule');
 const Appointment = require('../schema/Appointment'); // Assuming you have an Appointment schema
-const Payment = require('../schema/Payment'); // Assuming you have a Payment schema
+const Payment = require('../schema/Payment.js'); // Assuming you have a Payment schema
 
 const RABBITMQ_URL = process.env.RABBITMQ_URL || 'amqp://localhost:5672';
 const EVENTS_EXCHANGE = 'funnelseye_events';

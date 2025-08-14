@@ -11,30 +11,29 @@ const asyncHandler = (fn) => (req, res, next) => {
 };
 
 /**
- * @desc    Get coach availability settings
- * @route   GET /api/coach/:coachId/availability
- * @access  Public
- */
+ * @desc    Get coach availability settings
+ * @route   GET /api/coach/:coachId/availability
+ * @access  Public
+ */
 const getCoachAvailability = asyncHandler(async (req, res) => {
-  const { coachId } = req.params;
-  const availability = await CoachAvailability.findOne({ coachId });
+  const { coachId } = req.params;
+  const availability = await CoachAvailability.findOne({ coachId : coachId });
+  if (!availability) {
+    return res.status(200).json({
+      success: true,
+      data: {
+        timeZone: 'UTC',
+        workingHours: [],
+        unavailableSlots: [], // <-- CORRECTED: Changed 'unavailableDates' to 'unavailableSlots'
+        slotDuration: 30,
+      },
+    });
+  }
 
-  if (!availability) {
-    return res.status(200).json({
-      success: true,
-      data: {
-        timeZone: 'UTC',
-        workingHours: [],
-        unavailableDates: [],
-        slotDuration: 30,
-      },
-    });
-  }
-
-  res.status(200).json({
-    success: true,
-    data: availability,
-  });
+  res.status(200).json({
+    success: true,
+    data: availability,
+  });
 });
 
 /**
@@ -43,34 +42,52 @@ const getCoachAvailability = asyncHandler(async (req, res) => {
  * @access  Private (Coach)
  */
 const setCoachAvailability = asyncHandler(async (req, res) => {
-    const { _id } = req.user;
-    // FIX: Add bufferTime to the destructuring
-    const { timeZone, workingHours, unavailableDates, slotDuration, bufferTime } = req.body;
+    // Check if the user is authenticated
+    if (!req.user || !req.user._id) {
+        console.error('Authentication Error: req.user is undefined or missing _id');
+        return res.status(401).json({
+            success: false,
+            message: 'Not authorized. Please log in.'
+        });
+    }
 
-    if (!workingHours || !Array.isArray(workingHours)) {
-        return res.status(400).json({
-            success: false,
-            message: 'Working hours are required and must be an array.',
-        });
-    }
+    const { _id } = req.user;
+    // FIX: Use 'unavailableSlots' to match the schema
+    const { timeZone, workingHours, unavailableSlots, slotDuration, bufferTime } = req.body;
 
-    const availability = await CoachAvailability.findOneAndUpdate(
-        { coachId: _id },
-        {
-            timeZone,
-            workingHours,
-            unavailableDates,
-            slotDuration,
-            // FIX: Add bufferTime to the object being saved
-            bufferTime,
-        },
-        { new: true, upsert: true, runValidators: true }
-    );
+    if (!workingHours || !Array.isArray(workingHours)) {
+        return res.status(400).json({
+            success: false,
+            message: 'Working hours are required and must be an array.',
+        });
+    }
 
-    res.status(200).json({
-        success: true,
-        data: availability,
-    });
+    try {
+        const availability = await CoachAvailability.findOneAndUpdate(
+            { coachId: _id },
+            {
+                timeZone,
+                workingHours,
+                // FIX: Use 'unavailableSlots' to match the schema
+                unavailableSlots,
+                defaultAppointmentDuration: slotDuration, // <-- This was a bug, the schema field is different
+                bufferTime,
+            },
+            { new: true, upsert: true, runValidators: true }
+        );
+
+        res.status(200).json({
+            success: true,
+            data: availability,
+        });
+    } catch (error) {
+        console.error('Error saving availability settings:', error.message);
+        res.status(500).json({
+            success: false,
+            message: 'An error occurred while saving availability settings.',
+            error: error.message
+        });
+    }
 });
 /**
  * @desc    Get available booking slots for a coach on a specific day
