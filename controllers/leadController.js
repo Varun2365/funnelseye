@@ -4,6 +4,8 @@ const Lead = require('../schema/Lead');
 const Funnel = require('../schema/Funnel');
 const { publishEvent } = require('../services/rabbitmqProducer');
 const LeadModel = require('../schema/Lead');
+const NurturingSequence = require('../schema/NurturingSequence');
+const { scheduleFutureEvent } = require('../services/automationSchedulerService');
 
 // @desc    Create a new Lead
 // @route   POST /api/leads
@@ -456,6 +458,125 @@ const deleteLead = async (req, res) => {
     }
 };
 
+// --- Basic lead scoring function with explanation ---
+function calculateLeadScore(lead) {
+    let score = 0;
+    let explanation = [];
+    if (lead.leadTemperature === 'Hot') {
+        score += 30;
+        explanation.push('Hot lead temperature: +30');
+    }
+    if (lead.source) {
+        score += 5;
+        explanation.push('Lead source present: +5');
+    }
+    if (lead.email && lead.phone) {
+        score += 15;
+        explanation.push('Both email and phone provided: +15');
+    } else if (lead.email || lead.phone) {
+        score += 5;
+        explanation.push('Either email or phone provided: +5');
+    }
+    if (lead.nextFollowUpAt) {
+        score += 10;
+        explanation.push('Next follow-up scheduled: +10');
+    }
+    score = Math.min(100, score);
+    return { score, explanation };
+}
+
+// Helper to trigger automation for a nurturing step
+async function triggerNurturingStepAction(lead, step) {
+    const actionType = step.actionType;
+    const config = step.actionConfig || {};
+    const eventPayload = {
+        leadId: lead._id,
+        coachId: lead.coachId,
+        stepIndex: lead.nurturingStepIndex,
+        actionType,
+        config,
+        leadData: lead.toObject()
+    };
+    await publishEvent('funnelseye_actions', 'lead.nurture', {
+        actionType,
+        config,
+        payload: eventPayload
+    });
+}
+
+// Assign a nurturing sequence to a lead
+const assignNurturingSequence = async (req, res) => {
+    try {
+        const { leadId, sequenceId } = req.body;
+        const lead = await Lead.findById(leadId);
+        if (!lead) return res.status(404).json({ success: false, message: 'Lead not found' });
+        const sequence = await NurturingSequence.findById(sequenceId);
+        if (!sequence) return res.status(404).json({ success: false, message: 'Nurturing sequence not found' });
+        lead.nurturingSequence = sequenceId;
+        lead.nurturingStepIndex = 0;
+        await lead.save();
+        res.status(200).json({ success: true, message: 'Nurturing sequence assigned', data: lead });
+    } catch (e) {
+        console.error('Assign nurturing sequence error:', e);
+        res.status(500).json({ success: false, message: 'Server error during assignment.' });
+    }
+};
+
+// Advance a lead to the next nurturing step (now uses automation system)
+const advanceNurturingStep = async (req, res) => {
+    try {
+        const { leadId } = req.body;
+        const lead = await Lead.findById(leadId).populate('nurturingSequence');
+        if (!lead) return res.status(404).json({ success: false, message: 'Lead not found' });
+        if (!lead.nurturingSequence) return res.status(400).json({ success: false, message: 'No nurturing sequence assigned' });
+        const sequence = lead.nurturingSequence;
+        if (lead.nurturingStepIndex >= sequence.steps.length) {
+            return res.status(400).json({ success: false, message: 'Lead has completed the nurturing sequence' });
+        }
+        const step = sequence.steps[lead.nurturingStepIndex];
+        // Schedule or trigger the action
+        if (step.delayDays && step.delayDays > 0) {
+            const scheduledTime = new Date(Date.now() + step.delayDays * 24 * 60 * 60 * 1000);
+            await scheduleFutureEvent(scheduledTime, 'funnelseye_actions', 'lead.nurture', {
+                actionType: step.actionType,
+                config: step.actionConfig || {},
+                payload: {
+                    leadId: lead._id,
+                    coachId: lead.coachId,
+                    stepIndex: lead.nurturingStepIndex,
+                    actionType: step.actionType,
+                    config: step.actionConfig || {},
+                    leadData: lead.toObject()
+                }
+            });
+        } else {
+            await triggerNurturingStepAction(lead, step);
+        }
+        lead.nurturingStepIndex += 1;
+        await lead.save();
+        res.status(200).json({ success: true, message: 'Advanced to next nurturing step and published automation event', data: lead });
+    } catch (e) {
+        console.error('Advance nurturing step error:', e);
+        res.status(500).json({ success: false, message: 'Server error during step advancement.' });
+    }
+};
+
+// Get nurturing sequence progress for a lead
+const getNurturingProgress = async (req, res) => {
+    try {
+        const { leadId } = req.params;
+        const lead = await Lead.findById(leadId).populate('nurturingSequence');
+        if (!lead) return res.status(404).json({ success: false, message: 'Lead not found' });
+        if (!lead.nurturingSequence) return res.status(200).json({ success: true, data: { progress: null, message: 'No nurturing sequence assigned' } });
+        const sequence = lead.nurturingSequence;
+        const currentStep = sequence.steps[lead.nurturingStepIndex] || null;
+        res.status(200).json({ success: true, data: { sequence, currentStep, stepIndex: lead.nurturingStepIndex } });
+    } catch (e) {
+        console.error('Get nurturing progress error:', e);
+        res.status(500).json({ success: false, message: 'Server error during progress fetch.' });
+    }
+};
+
 // Export all functions
 module.exports = {
     createLead,
@@ -470,19 +591,16 @@ module.exports = {
         try {
             const lead = await LeadModel.findOne({ _id: req.params.id, coachId: req.coachId });
             if (!lead) return res.status(404).json({ success: false, message: 'Lead not found' });
-            // reuse heuristic from actionExecutorService (duplicated minimal logic to avoid coupling)
-            let score = 0;
-            if (lead.leadTemperature === 'Hot') score += 30;
-            if (lead.source) score += 5;
-            if (lead.email && lead.phone) score += 15; else if (lead.email || lead.phone) score += 5;
-            if (lead.nextFollowUpAt) score += 10;
-            score = Math.min(100, score);
+            const { score, explanation } = calculateLeadScore(lead);
             lead.score = score;
             await lead.save();
-            return res.status(200).json({ success: true, data: { leadId: lead._id, score } });
+            return res.status(200).json({ success: true, data: { leadId: lead._id, score, explanation } });
         } catch (e) {
             console.error('AI rescore error:', e);
             return res.status(500).json({ success: false, message: 'Server error during AI rescore.' });
         }
-    }
+    },
+    assignNurturingSequence,
+    advanceNurturingStep,
+    getNurturingProgress,
 };

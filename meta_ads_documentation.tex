@@ -1,0 +1,1046 @@
+\documentclass[11pt,a4paper]{article}
+
+% ==== Page Setup ====
+\usepackage[a4paper,margin=1.5cm]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+
+% ==== Formatting & Colors ====
+\usepackage{xcolor}
+\usepackage{hyperref}
+\hypersetup{hidelinks}
+
+% ==== Tables ====
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{booktabs}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+
+% ==== Lists & Sections ====
+\usepackage{titlesec}
+\usepackage{enumitem}
+
+% ==== Code Listings ====
+\usepackage{listings}
+
+\lstdefinelanguage{json}{
+  basicstyle=\ttfamily\scriptsize,
+  numbers=left,
+  numberstyle=\tiny,
+  stepnumber=1,
+  numbersep=8pt,
+  showstringspaces=false,
+  breaklines=true,
+  breakatwhitespace=true,
+  frame=single,
+  morestring=[b]",
+  literate={\{}{{{\{}}}1{\}}{{\}}}1
+}
+
+\lstdefinelanguage{JavaScript}{
+  basicstyle=\ttfamily\scriptsize,
+  numbers=left,
+  numberstyle=\tiny,
+  stepnumber=1,
+  numbersep=8pt,
+  showstringspaces=false,
+  breaklines=true,
+  breakatwhitespace=true,
+  frame=single
+}
+
+\lstdefinelanguage{bash}{
+  basicstyle=\ttfamily\scriptsize,
+  showstringspaces=false,
+  breaklines=true,
+  breakatwhitespace=true,
+  frame=single
+}
+
+% ==== TOC Spacing ====
+\usepackage{tocloft}
+\setlength{\cftbeforesecskip}{6pt}
+
+\title{\textbf{Meta Ads Integration Documentation}}
+\author{Project: PRJ\_YCT\_Final}
+\date{\today}
+
+\begin{document}
+\maketitle
+\tableofcontents
+\newpage
+
+% =====================
+\section{Overview}
+The Meta Ads integration module provides a comprehensive interface for managing Facebook/Meta advertising campaigns within the FunnelsEye platform. This module allows coaches to create, manage, and analyze their ad campaigns directly through the platform's API, with automatic synchronization between Meta's Graph API and the local database.
+
+% =====================
+\section{Architecture}
+\begin{itemize}[noitemsep]
+  \item \textbf{Schema Layer:} 
+    \begin{itemize}
+      \item \texttt{schema/AdCampaign.js} - MongoDB model for campaign data
+      \item \texttt{schema/AdSet.js} - MongoDB model for ad set targeting and budget
+      \item \texttt{schema/AdCreative.js} - MongoDB model for ad creatives with images and text
+      \item \texttt{schema/Ad.js} - MongoDB model for individual ads
+    \end{itemize}
+  \item \textbf{Service Layer:} \texttt{services/metaAdsService.js} - Meta Graph API integration with complete URL campaign creation
+  \item \textbf{Controller Layer:} \texttt{controllers/adsController.js} - HTTP request handlers for campaigns, ad sets, creatives, and ads
+  \item \textbf{Route Layer:} \texttt{routes/adsRoutes.js} - API endpoint definitions for all campaign components
+  \item \textbf{Integration:} Mounted at \texttt{/api/ads} in main application
+\end{itemize}
+
+% =====================
+\section{Data Model}
+\subsection{AdCampaign Schema}
+\begin{lstlisting}[language=JavaScript]
+const AdCampaignSchema = new mongoose.Schema({
+    coachId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    campaignId: { type: String, required: true },
+    name: { type: String, required: true },
+    status: { type: String, enum: ['ACTIVE', 'PAUSED', 'COMPLETED', 'DRAFT'], default: 'DRAFT' },
+    objective: { type: String },
+    budget: { type: Number },
+    spend: { type: Number, default: 0 },
+    currency: { type: String, default: 'USD' },
+    startDate: { type: Date },
+    endDate: { type: Date },
+    targeting: { type: mongoose.Schema.Types.Mixed },
+    results: { type: mongoose.Schema.Types.Mixed },
+    analytics: { type: mongoose.Schema.Types.Mixed },
+    lastSynced: { type: Date },
+    metaRaw: { type: mongoose.Schema.Types.Mixed },
+}, { timestamps: true });
+\end{lstlisting}
+
+\subsection{Field Descriptions}
+\begin{longtable}{L{3.5cm}L{11cm}}
+\toprule
+\textbf{Field} & \textbf{Description} \\
+\midrule
+coachId & Reference to the User model (coach who owns this campaign) \\
+campaignId & Meta's unique campaign identifier (from Graph API) \\
+name & Campaign display name \\
+status & Current campaign status (ACTIVE, PAUSED, COMPLETED, DRAFT) \\
+objective & Campaign objective (e.g., LEAD\_GENERATION, CONVERSIONS) \\
+budget & Daily or lifetime budget amount \\
+spend & Total amount spent so far \\
+currency & Currency code (default: USD) \\
+startDate & Campaign start date \\
+endDate & Campaign end date (optional) \\
+targeting & Targeting parameters (age, gender, location, interests, etc.) \\
+results & Performance metrics (impressions, clicks, conversions) \\
+analytics & Calculated metrics (CPC, CTR, CPM, ROAS) \\
+lastSynced & Timestamp of last Meta API sync \\
+metaRaw & Complete raw response from Meta API for debugging \\
+\bottomrule
+\end{longtable}
+
+\subsection{AdSet Schema}
+\begin{lstlisting}[language=JavaScript]
+const AdSetSchema = new mongoose.Schema({
+    coachId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    campaignId: { type: String, required: true }, // Meta campaign ID
+    adSetId: { type: String, required: true }, // Meta ad set ID
+    name: { type: String, required: true },
+    status: { type: String, enum: ['ACTIVE', 'PAUSED', 'COMPLETED', 'DRAFT'], default: 'DRAFT' },
+    targeting: { type: mongoose.Schema.Types.Mixed }, // Age, gender, location, interests
+    daily_budget: { type: Number },
+    lifetime_budget: { type: Number },
+    billing_event: { type: String, enum: ['IMPRESSIONS', 'LINK_CLICKS'], default: 'IMPRESSIONS' },
+    optimization_goal: { type: String, enum: ['LINK_CLICKS', 'REACH', 'IMPRESSIONS', 'LEAD_GENERATION'], default: 'LINK_CLICKS' },
+    start_time: { type: Date },
+    end_time: { type: Date },
+    lastSynced: { type: Date },
+    metaRaw: { type: mongoose.Schema.Types.Mixed }, // Store raw Meta API response
+}, { timestamps: true });
+\end{lstlisting}
+
+\subsection{AdCreative Schema}
+\begin{lstlisting}[language=JavaScript]
+const AdCreativeSchema = new mongoose.Schema({
+    coachId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    campaignId: { type: String, required: true }, // Meta campaign ID
+    creativeId: { type: String, required: true }, // Meta creative ID
+    name: { type: String, required: true },
+    status: { type: String, enum: ['ACTIVE', 'PAUSED', 'DELETED'], default: 'ACTIVE' },
+    object_story_spec: { type: mongoose.Schema.Types.Mixed }, // Link data, image, message
+    image_hash: { type: String }, // Meta image hash
+    image_url: { type: String }, // Original image URL
+    link: { type: String }, // Target URL
+    message: { type: String }, // Ad copy
+    call_to_action: { type: mongoose.Schema.Types.Mixed }, // CTA button
+    lastSynced: { type: Date },
+    metaRaw: { type: mongoose.Schema.Types.Mixed }, // Store raw Meta API response
+}, { timestamps: true });
+\end{lstlisting}
+
+\subsection{Ad Schema}
+\begin{lstlisting}[language=JavaScript]
+const AdSchema = new mongoose.Schema({
+    coachId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    campaignId: { type: String, required: true }, // Meta campaign ID
+    adSetId: { type: String, required: true }, // Meta ad set ID
+    adId: { type: String, required: true }, // Meta ad ID
+    creativeId: { type: String, required: true }, // Meta creative ID
+    name: { type: String, required: true },
+    status: { type: String, enum: ['ACTIVE', 'PAUSED', 'COMPLETED', 'DELETED'], default: 'DRAFT' },
+    adset_id: { type: String }, // Meta ad set ID reference
+    creative: { type: mongoose.Schema.Types.Mixed }, // Creative reference
+    lastSynced: { type: Date },
+    metaRaw: { type: mongoose.Schema.Types.Mixed }, // Store raw Meta API response
+}, { timestamps: true });
+\end{lstlisting}
+
+% =====================
+\section{Service Layer (metaAdsService.js)}
+\subsection{Core Functions}
+
+\subsubsection{fetchCampaigns(coachMetaAccountId)}
+\textbf{API Call:}
+\begin{lstlisting}[language=json]
+GET https://graph.facebook.com/v19.0/act_{accountId}/campaigns
+\end{lstlisting}
+
+\subsubsection{fetchCampaignInsights(campaignId)}
+\textbf{API Call:}
+\begin{lstlisting}[language=json]
+GET https://graph.facebook.com/v19.0/{campaignId}/insights
+\end{lstlisting}
+
+\subsubsection{createCampaign(coachMetaAccountId, campaignData)}
+\textbf{API Call:}
+\begin{lstlisting}[language=json]
+POST https://graph.facebook.com/v19.0/act_{accountId}/campaigns
+\end{lstlisting}
+
+\subsubsection{updateCampaign(campaignId, updateData)}
+\textbf{API Call:}
+\begin{lstlisting}[language=json]
+POST https://graph.facebook.com/v19.0/{campaignId}
+\end{lstlisting}
+
+\subsubsection{pauseCampaign(campaignId)}
+Calls:
+\begin{lstlisting}[language=json]
+updateCampaign(campaignId, { status: 'PAUSED' })
+\end{lstlisting}
+
+\subsubsection{resumeCampaign(campaignId)}
+Calls:
+\begin{lstlisting}[language=json]
+updateCampaign(campaignId, { status: 'ACTIVE' })
+\end{lstlisting}
+
+\subsubsection{syncCampaignsToDB(coachId, coachMetaAccountId)}
+Process:
+\begin{enumerate}
+  \item Fetch campaigns from Meta API
+  \item Upsert to AdCampaign collection
+  \item Update lastSynced timestamp
+  \item Store raw response in metaRaw
+\end{enumerate}
+
+\subsubsection{createAdSet(campaignId, adSetData)}
+\textbf{API Call:}
+\begin{lstlisting}[language=json]
+POST https://graph.facebook.com/v19.0/act_{campaignId}/adsets
+\end{lstlisting}
+
+\subsubsection{createAdCreative(campaignId, creativeData)}
+\textbf{API Call:}
+\begin{lstlisting}[language=json]
+POST https://graph.facebook.com/v19.0/act_{campaignId}/adcreatives
+\end{lstlisting}
+
+\subsubsection{createAd(campaignId, adData)}
+\textbf{API Call:}
+\begin{lstlisting}[language=json]
+POST https://graph.facebook.com/v19.0/act_{campaignId}/ads
+\end{lstlisting}
+
+\subsubsection{uploadImage(imageUrl)}
+\textbf{API Call:}
+\begin{lstlisting}[language=json]
+POST https://graph.facebook.com/v19.0/me/adimages
+\end{lstlisting}
+
+\subsubsection{fetchAdSets(campaignId)}
+\textbf{API Call:}
+\begin{lstlisting}[language=json]
+GET https://graph.facebook.com/v19.0/{campaignId}/adsets
+\end{lstlisting}
+
+\subsubsection{fetchAdCreatives(campaignId)}
+\textbf{API Call:}
+\begin{lstlisting}[language=json]
+GET https://graph.facebook.com/v19.0/{campaignId}/adcreatives
+\end{lstlisting}
+
+\subsubsection{fetchAds(campaignId)}
+\textbf{API Call:}
+\begin{lstlisting}[language=json]
+GET https://graph.facebook.com/v19.0/{campaignId}/ads
+\end{lstlisting}
+
+% =====================
+\section{API Endpoints}
+All endpoints are protected and require authentication.
+
+\subsection{List Campaigns}
+\begin{longtable}{L{3cm}Y}
+\toprule
+\textbf{Method \& Endpoint} & \textbf{Description} \\
+\midrule
+\texttt{GET /api/ads} & Retrieves all ad campaigns for the authenticated coach from the local database. Requires Bearer token. \\
+\bottomrule
+\end{longtable}
+
+\textbf{Sample Response:}
+\begin{lstlisting}[language=json]
+{
+  "success": true,
+  "data": [
+    {
+      "_id": "64f1a2b3c4d5e6f7a8b9c0d1",
+      "campaignId": "123456789012345",
+      "name": "Lead Generation Campaign",
+      "status": "ACTIVE",
+      "objective": "LEAD_GENERATION",
+      "budget": 100,
+      "spend": 45.50,
+      "currency": "USD",
+      "startDate": "2025-01-01T00:00:00.000Z",
+      "lastSynced": "2025-01-15T10:30:00.000Z"
+    }
+  ]
+}
+\end{lstlisting}
+
+\subsection{Create Campaign}
+\begin{longtable}{L{3cm}Y}
+\toprule
+\textbf{Method \& Endpoint} & \textbf{Description} \\
+\midrule
+\texttt{POST /api/ads/create} & Creates a new campaign in Meta Ads and optionally syncs to local database. Requires Bearer token. \\
+\bottomrule
+\end{longtable}
+
+\textbf{Sample Request:}
+\begin{lstlisting}[language=json]
+{
+  "coachMetaAccountId": "123456789",
+  "campaignData": {
+    "name": "New Lead Campaign",
+    "objective": "LEAD_GENERATION",
+    "status": "PAUSED",
+    "special_ad_categories": [],
+    "daily_budget": 5000,
+    "billing_event": "IMPRESSIONS",
+    "optimization_goal": "LEAD_GENERATION"
+  }
+}
+\end{lstlisting}
+
+\textbf{Sample Response:}
+\begin{lstlisting}[language=json]
+{
+  "success": true,
+  "data": {
+    "id": "123456789012345",
+    "name": "New Lead Campaign",
+    "status": "PAUSED",
+    "objective": "LEAD_GENERATION"
+  }
+}
+\end{lstlisting}
+
+\subsection{Sync Campaigns}
+\begin{longtable}{L{3cm}Y}
+\toprule
+\textbf{Method \& Endpoint} & \textbf{Description} \\
+\midrule
+\texttt{POST /api/ads/sync} & Synchronizes all campaigns from Meta API to local database for the specified ad account. Requires Bearer token. \\
+\bottomrule
+\end{longtable}
+
+\textbf{Sample Request:}
+\begin{lstlisting}[language=json]
+{
+  "coachMetaAccountId": "123456789"
+}
+\end{lstlisting}
+
+\textbf{Sample Response:}
+\begin{lstlisting}[language=json]
+{
+  "success": true,
+  "message": "Campaigns synchronized successfully",
+  "syncedCount": 5
+}
+\end{lstlisting}
+
+\subsection{Update Campaign}
+\begin{longtable}{L{3cm}Y}
+\toprule
+\textbf{Method \& Endpoint} & \textbf{Description} \\
+\midrule
+\texttt{PUT /api/ads/:campaignId} & Updates campaign settings in Meta Ads. Path parameter: campaignId (string). Requires Bearer token. \\
+\bottomrule
+\end{longtable}
+
+\textbf{Sample Request:}
+\begin{lstlisting}[language=json]
+{
+  "name": "Updated Campaign Name",
+  "daily_budget": 7500,
+  "status": "ACTIVE"
+}
+\end{lstlisting}
+
+\textbf{Sample Response:}
+\begin{lstlisting}[language=json]
+{
+  "success": true,
+  "data": {
+    "id": "123456789012345",
+    "name": "Updated Campaign Name"
+  }
+}
+\end{lstlisting}
+
+\subsection{Pause Campaign}
+\begin{longtable}{L{3cm}Y}
+\toprule
+\textbf{Method \& Endpoint} & \textbf{Description} \\
+\midrule
+\texttt{POST /api/ads/:campaignId/pause} & Pauses an active campaign. Path parameter: campaignId (string). Requires Bearer token. \\
+\bottomrule
+\end{longtable}
+
+\textbf{Sample Response:}
+\begin{lstlisting}[language=json]
+{
+  "success": true,
+  "data": {
+    "id": "123456789012345",
+    "status": "PAUSED"
+  }
+}
+\end{lstlisting}
+
+\subsection{Resume Campaign}
+\begin{longtable}{L{3cm}Y}
+\toprule
+\textbf{Method \& Endpoint} & \textbf{Description} \\
+\midrule
+\texttt{POST /api/ads/:campaignId/resume} & Resumes a paused campaign. Path parameter: campaignId (string). Requires Bearer token. \\
+\bottomrule
+\end{longtable}
+
+\textbf{Sample Response:}
+\begin{lstlisting}[language=json]
+{
+  "success": true,
+  "data": {
+    "id": "123456789012345",
+    "status": "ACTIVE"
+  }
+}
+\end{lstlisting}
+
+\subsection{Get Campaign Analytics}
+\begin{longtable}{L{3cm}Y}
+\toprule
+\textbf{Method \& Endpoint} & \textbf{Description} \\
+\midrule
+\texttt{GET /api/ads/:campaignId/analytics} & Retrieves analytics and insights for a specific campaign. Path parameter: campaignId (string). Query parameters: date\_preset, time\_increment, fields. Requires Bearer token. \\
+\bottomrule
+\end{longtable}
+
+\textbf{Sample Response:}
+\begin{lstlisting}[language=json]
+{
+  "success": true,
+  "data": {
+    "data": [
+      {
+        "campaign_id": "123456789012345",
+        "campaign_name": "Lead Generation Campaign",
+        "date_start": "2025-01-01",
+        "date_stop": "2025-01-15",
+        "impressions": 15000,
+        "clicks": 750,
+        "spend": 450.25,
+        "cpc": 0.60,
+        "ctr": 5.00,
+        "cpm": 30.02,
+        "actions": [
+          {
+            "action_type": "lead",
+            "value": "25"
+          }
+        ]
+      }
+    ],
+    "paging": {
+      "cursors": {
+        "before": "...",
+        "after": "..."
+      }
+    }
+  }
+}
+\end{lstlisting}
+
+\subsection{Upload Image}
+\begin{longtable}{L{3cm}Y}
+\toprule
+\textbf{Method \& Endpoint} & \textbf{Description} \\
+\midrule
+\texttt{POST /api/ads/upload-image} & Uploads an image to Meta and returns the image hash for use in ad creatives. Requires Bearer token. \\
+\bottomrule
+\end{longtable}
+
+\textbf{Sample Request:}
+\begin{lstlisting}[language=json]
+{
+  "imageUrl": "https://example.com/image.jpg"
+}
+\end{lstlisting}
+
+\textbf{Sample Response:}
+\begin{lstlisting}[language=json]
+{
+  "success": true,
+  "data": {
+    "images": {
+      "https://example.com/image.jpg": {
+        "hash": "abc123def456ghi789"
+      }
+    }
+  }
+}
+\end{lstlisting}
+
+\subsection{Create Ad Set}
+\begin{longtable}{L{3cm}Y}
+\toprule
+\textbf{Method \& Endpoint} & \textbf{Description} \\
+\midrule
+\texttt{POST /api/ads/:campaignId/ad-sets} & Creates an ad set for targeting and budget settings within a campaign. Path parameter: campaignId (string). Requires Bearer token. \\
+\bottomrule
+\end{longtable}
+
+\textbf{Sample Request:}
+\begin{lstlisting}[language=json]
+{
+  "name": "Target Audience",
+  "targeting": {
+    "age_min": 25,
+    "age_max": 45,
+    "geo_locations": {
+      "countries": ["US"]
+    },
+    "interests": [
+      {
+        "id": "6002714395372",
+        "name": "Fitness"
+      }
+    ]
+  },
+  "daily_budget": 2500,
+  "billing_event": "IMPRESSIONS",
+  "optimization_goal": "LINK_CLICKS",
+  "start_time": "2025-01-20T00:00:00-0800"
+}
+\end{lstlisting}
+
+\textbf{Sample Response:}
+\begin{lstlisting}[language=json]
+{
+  "success": true,
+  "data": {
+    "id": "789012345678901",
+    "name": "Target Audience",
+    "status": "DRAFT"
+  }
+}
+\end{lstlisting}
+
+\subsection{Create Ad Creative}
+\begin{longtable}{L{3cm}Y}
+\toprule
+\textbf{Method \& Endpoint} & \textbf{Description} \\
+\midrule
+\texttt{POST /api/ads/:campaignId/creatives} & Creates an ad creative with image, text, and URL targeting. Path parameter: campaignId (string). Requires Bearer token. \\
+\bottomrule
+\end{longtable}
+
+\textbf{Sample Request:}
+\begin{lstlisting}[language=json]
+{
+  "name": "Website Creative",
+  "object_story_spec": {
+    "link_data": {
+      "link": "https://yourfitnesswebsite.com",
+      "message": "Transform your fitness journey today! Join our exclusive program and see real results in just 30 days.",
+      "image_hash": "abc123def456ghi789",
+      "call_to_action": {
+        "type": "LEARN_MORE"
+      }
+    }
+  }
+}
+\end{lstlisting}
+
+\textbf{Sample Response:}
+\begin{lstlisting}[language=json]
+{
+  "success": true,
+  "data": {
+    "id": "987654321098765",
+    "name": "Website Creative",
+    "status": "ACTIVE"
+  }
+}
+\end{lstlisting}
+
+\subsection{Create Ad}
+\begin{longtable}{L{3cm}Y}
+\toprule
+\textbf{Method \& Endpoint} & \textbf{Description} \\
+\midrule
+\texttt{POST /api/ads/:campaignId/ads} & Creates an ad that combines an ad set and creative. Path parameter: campaignId (string). Requires Bearer token. \\
+\bottomrule
+\end{longtable}
+
+\textbf{Sample Request:}
+\begin{lstlisting}[language=json]
+{
+  "name": "Website Traffic Ad",
+  "adset_id": "789012345678901",
+  "creative": {
+    "creative_id": "987654321098765"
+  },
+  "status": "PAUSED"
+}
+\end{lstlisting}
+
+\textbf{Sample Response:}
+\begin{lstlisting}[language=json]
+{
+  "success": true,
+  "data": {
+    "id": "111222333444555",
+    "name": "Website Traffic Ad",
+    "status": "PAUSED"
+  }
+}
+\end{lstlisting}
+
+\subsection{List Ad Sets}
+\begin{longtable}{L{3cm}Y}
+\toprule
+\textbf{Method \& Endpoint} & \textbf{Description} \\
+\midrule
+\texttt{GET /api/ads/:campaignId/ad-sets} & Retrieves all ad sets for a specific campaign from the local database. Path parameter: campaignId (string). Requires Bearer token. \\
+\bottomrule
+\end{longtable}
+
+\textbf{Sample Response:}
+\begin{lstlisting}[language=json]
+{
+  "success": true,
+  "data": [
+    {
+      "_id": "64f1a2b3c4d5e6f7a8b9c0d2",
+      "adSetId": "789012345678901",
+      "name": "Target Audience",
+      "status": "ACTIVE",
+      "targeting": {
+        "age_min": 25,
+        "age_max": 45,
+        "geo_locations": {
+          "countries": ["US"]
+        }
+      },
+      "daily_budget": 2500,
+      "optimization_goal": "LINK_CLICKS"
+    }
+  ]
+}
+\end{lstlisting}
+
+\subsection{List Ad Creatives}
+\begin{longtable}{L{3cm}Y}
+\toprule
+\textbf{Method \& Endpoint} & \textbf{Description} \\
+\midrule
+\texttt{GET /api/ads/:campaignId/creatives} & Retrieves all ad creatives for a specific campaign from the local database. Path parameter: campaignId (string). Requires Bearer token. \\
+\bottomrule
+\end{longtable}
+
+\textbf{Sample Response:}
+\begin{lstlisting}[language=json]
+{
+  "success": true,
+  "data": [
+    {
+      "_id": "64f1a2b3c4d5e6f7a8b9c0d3",
+      "creativeId": "987654321098765",
+      "name": "Website Creative",
+      "status": "ACTIVE",
+      "link": "https://yourfitnesswebsite.com",
+      "message": "Transform your fitness journey today!",
+      "image_hash": "abc123def456ghi789"
+    }
+  ]
+}
+\end{lstlisting}
+
+\subsection{List Ads}
+\begin{longtable}{L{3cm}Y}
+\toprule
+\textbf{Method \& Endpoint} & \textbf{Description} \\
+\midrule
+\texttt{GET /api/ads/:campaignId/ads} & Retrieves all ads for a specific campaign from the local database. Path parameter: campaignId (string). Requires Bearer token. \\
+\bottomrule
+\end{longtable}
+
+\textbf{Sample Response:}
+\begin{lstlisting}[language=json]
+{
+  "success": true,
+  "data": [
+    {
+      "_id": "64f1a2b3c4d5e6f7a8b9c0d4",
+      "adId": "111222333444555",
+      "name": "Website Traffic Ad",
+      "status": "PAUSED",
+      "adset_id": "789012345678901",
+      "creativeId": "987654321098765"
+    }
+  ]
+}
+\end{lstlisting}
+
+\subsection{Create Complete URL Campaign (All-in-One)}
+\begin{longtable}{L{3cm}Y}
+\toprule
+\textbf{Method \& Endpoint} & \textbf{Description} \\
+\midrule
+\texttt{POST /api/ads/create-url-campaign} & Creates a complete URL campaign with campaign, ad set, creative, and ad in a single API call. Requires Bearer token. \\
+\bottomrule
+\end{longtable}
+
+\textbf{Sample Request:}
+\begin{lstlisting}[language=json]
+{
+  "coachMetaAccountId": "123456789",
+  "campaignData": {
+    "name": "Website Traffic Q1",
+    "objective": "LINK_CLICKS",
+    "status": "PAUSED",
+    "daily_budget": 5000
+  },
+  "adSetData": {
+    "name": "Target Audience",
+    "targeting": {
+      "age_min": 25,
+      "age_max": 45,
+      "geo_locations": {
+        "countries": ["US"]
+      }
+    },
+    "daily_budget": 2500,
+    "billing_event": "IMPRESSIONS",
+    "optimization_goal": "LINK_CLICKS"
+  },
+  "creativeData": {
+    "name": "Website Creative",
+    "object_story_spec": {
+      "link_data": {
+        "link": "https://yourfitnesswebsite.com",
+        "message": "Transform your fitness journey today! Join our exclusive program and see real results in just 30 days.",
+        "image_hash": "abc123def456ghi789",
+        "call_to_action": {
+          "type": "LEARN_MORE"
+        }
+      }
+    }
+  },
+  "adData": {
+    "name": "Website Traffic Ad",
+    "status": "PAUSED"
+  }
+}
+\end{lstlisting}
+
+\textbf{Sample Response:}
+\begin{lstlisting}[language=json]
+{
+  "success": true,
+  "data": {
+    "campaign": {
+      "id": "123456789012345",
+      "name": "Website Traffic Q1",
+      "status": "PAUSED"
+    },
+    "adSet": {
+      "id": "789012345678901",
+      "name": "Target Audience",
+      "status": "DRAFT"
+    },
+    "creative": {
+      "id": "987654321098765",
+      "name": "Website Creative",
+      "status": "ACTIVE"
+    },
+    "ad": {
+      "id": "111222333444555",
+      "name": "Website Traffic Ad",
+      "status": "PAUSED"
+    }
+  }
+}
+\end{lstlisting}
+
+% =====================
+\section{Setup and Configuration}
+\subsection{Environment Variables}
+\begin{longtable}{L{4cm}L{8cm}}
+\toprule
+\textbf{Variable} & \textbf{Description} \\
+\midrule
+META\_ADS\_ACCESS\_TOKEN & Meta Graph API access token with ads permissions \\
+\bottomrule
+\end{longtable}
+
+\subsection{Meta App Setup}
+\begin{enumerate}
+  \item Create a Meta App in Facebook Developers Console
+  \item Add the "Marketing API" product
+  \item Generate a User Access Token with the following permissions:
+    \begin{itemize}
+      \item \texttt{ads\_management}
+      \item \texttt{ads\_read}
+      \item \texttt{business\_management}
+      \item \texttt{read\_insights}
+    \end{itemize}
+  \item Set the token as \texttt{META\_ADS\_ACCESS\_TOKEN} environment variable
+\end{enumerate}
+
+\subsection{Ad Account Access}
+Each coach needs:
+\begin{itemize}
+  \item A Meta Ad Account ID (found in Ads Manager)
+  \item The account ID without the "act\_" prefix (service adds this automatically)
+  \item Proper permissions on the ad account
+\end{itemize}
+
+% =====================
+\section{Usage Examples}
+\subsection{Complete Campaign Creation Flow}
+\begin{enumerate}
+  \item \textbf{Create Campaign:}
+    \begin{lstlisting}[language=bash]
+curl -X POST http://localhost:8080/api/ads/create \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "coachMetaAccountId": "123456789",
+    "campaignData": {
+      "name": "Lead Generation Q1",
+      "objective": "LEAD_GENERATION",
+      "status": "PAUSED",
+      "daily_budget": 5000
+    }
+  }'
+    \end{lstlisting}
+
+  \item \textbf{Sync to Database:}
+    \begin{lstlisting}[language=bash]
+curl -X POST http://localhost:8080/api/ads/sync \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"coachMetaAccountId": "123456789"}'
+    \end{lstlisting}
+
+  \item \textbf{List Campaigns:}
+    \begin{lstlisting}[language=bash]
+curl -X GET http://localhost:8080/api/ads \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+    \end{lstlisting}
+
+  \item \textbf{Activate Campaign:}
+    \begin{lstlisting}[language=bash]
+curl -X POST http://localhost:8080/api/ads/123456789012345/resume \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+    \end{lstlisting}
+
+  \item \textbf{Get Analytics:}
+    \begin{lstlisting}[language=bash]
+curl -X GET "http://localhost:8080/api/ads/123456789012345/analytics?date_preset=last_30d" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+    \end{lstlisting}
+\end{enumerate}
+
+\subsection{Complete URL Campaign Creation Flow}
+\begin{enumerate}
+  \item \textbf{Upload Image:}
+    \begin{lstlisting}[language=bash]
+curl -X POST http://localhost:8080/api/ads/upload-image \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"imageUrl": "https://yourdomain.com/image.jpg"}'
+    \end{lstlisting}
+
+  \item \textbf{Create Complete URL Campaign (All-in-One):}
+    \begin{lstlisting}[language=bash]
+curl -X POST http://localhost:8080/api/ads/create-url-campaign \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "coachMetaAccountId": "123456789",
+    "campaignData": {
+      "name": "Website Traffic Q1",
+      "objective": "LINK_CLICKS",
+      "status": "PAUSED",
+      "daily_budget": 5000
+    },
+    "adSetData": {
+      "name": "Target Audience",
+      "targeting": {
+        "age_min": 25,
+        "age_max": 45,
+        "geo_locations": {"countries": ["US"]}
+      },
+      "daily_budget": 2500,
+      "billing_event": "IMPRESSIONS",
+      "optimization_goal": "LINK_CLICKS"
+    },
+    "creativeData": {
+      "name": "Website Creative",
+      "object_story_spec": {
+        "link_data": {
+          "link": "https://yourfitnesswebsite.com",
+          "message": "Transform your fitness journey today!",
+          "image_hash": "abc123def456ghi789",
+          "call_to_action": {"type": "LEARN_MORE"}
+        }
+      }
+    },
+    "adData": {
+      "name": "Website Traffic Ad",
+      "status": "PAUSED"
+    }
+  }'
+    \end{lstlisting}
+
+  \item \textbf{List Campaign Components:}
+    \begin{lstlisting}[language=bash]
+# List ad sets
+curl -X GET http://localhost:8080/api/ads/123456789012345/ad-sets \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+
+# List creatives
+curl -X GET http://localhost:8080/api/ads/123456789012345/creatives \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+
+# List ads
+curl -X GET http://localhost:8080/api/ads/123456789012345/ads \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+    \end{lstlisting}
+
+  \item \textbf{Activate the Ad:}
+    \begin{lstlisting}[language=bash]
+curl -X PUT http://localhost:8080/api/ads/111222333444555 \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"status": "ACTIVE"}'
+    \end{lstlisting}
+\end{enumerate}
+
+% =====================
+\section{Error Handling}
+\subsection{Common Error Responses}
+\begin{longtable}{L{3cm}L{9cm}}
+\toprule
+\textbf{Error Code} & \textbf{Description} \\
+\midrule
+400 & Invalid request parameters or missing required fields \\
+401 & Unauthorized (invalid or missing JWT token) \\
+403 & Forbidden (insufficient permissions on Meta Ad Account) \\
+404 & Campaign not found \\
+429 & Rate limit exceeded (Meta API) \\
+500 & Internal server error or Meta API error \\
+\bottomrule
+\end{longtable}
+
+\subsection{Error Response Format}
+\begin{lstlisting}[language=json]
+{
+  "success": false,
+  "error": "INVALID_PARAMETER",
+  "message": "Missing required field: campaignData",
+  "details": {
+    "field": "campaignData",
+    "reason": "required"
+  }
+}
+\end{lstlisting}
+
+% =====================
+\section{Best Practices}
+\begin{itemize}
+  \item \textbf{Token Management:} Store access tokens securely and rotate regularly
+  \item \textbf{Rate Limiting:} Respect Meta API rate limits (200 calls per hour per user)
+  \item \textbf{Error Handling:} Always check for API errors and handle gracefully
+  \item \textbf{Data Sync:} Sync campaigns regularly to keep local data current
+  \textbf{Campaign Status:} Use PAUSED status for testing, ACTIVE for live campaigns
+  \item \textbf{Budget Management:} Set appropriate daily budgets to control spend
+  \item \textbf{Analytics:} Use date\_preset and time\_increment parameters for efficient data retrieval
+\end{itemize}
+
+% =====================
+\section{Troubleshooting}
+\subsection{Common Issues}
+\begin{longtable}{L{4cm}L{8cm}}
+\toprule
+\textbf{Issue} & \textbf{Solution} \\
+\midrule
+"Invalid access token" & Check META\_ADS\_ACCESS\_TOKEN environment variable \\
+"Permission denied" & Verify ad account permissions and token scope \\
+"Campaign not found" & Check campaign ID and ensure it belongs to the ad account \\
+"Rate limit exceeded" & Implement exponential backoff and retry logic \\
+"Invalid ad account" & Verify coachMetaAccountId format and permissions \\
+\bottomrule
+\end{longtable}
+
+\subsection{Debug Mode}
+Enable debug logging by setting:
+\begin{lstlisting}[language=bash]
+DEBUG=meta-ads:*
+\end{lstlisting}
+
+% =====================
+\section{Future Enhancements}
+\begin{itemize}
+  \item \textbf{Advanced Targeting:} Implement detailed targeting options with custom audiences and lookalike audiences
+  \item \textbf{Automated Optimization:} AI-powered budget allocation and optimization based on performance data
+  \item \textbf{Real-time Monitoring:} WebSocket-based real-time campaign updates and performance alerts
+  \item \textbf{Multi-platform Support:} Extend to Google Ads, LinkedIn Ads, TikTok Ads, etc.
+  \item \textbf{Advanced Analytics:} Custom reporting, data visualization, and predictive analytics
+  \item \textbf{Automation Rules:} Trigger actions based on campaign performance thresholds
+  \item \textbf{Bulk Operations:} Create and manage multiple campaigns, ad sets, and ads simultaneously
+  \item \textbf{Creative Templates:} Pre-built templates for common ad formats and industries
+  \item \textbf{A/B Testing:} Built-in A/B testing framework for ad creatives and targeting
+  \item \textbf{Performance Forecasting:} Predict campaign performance and ROI based on historical data
+  \item \textbf{Advanced Budget Management:} Smart budget allocation across multiple campaigns and ad sets
+  \item \textbf{Integration with CRM:} Direct integration with lead management and customer data
+\end{itemize}
+
+\end{document}

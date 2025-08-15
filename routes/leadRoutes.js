@@ -8,7 +8,10 @@ const {
     updateLead,
     addFollowUpNote,
     getUpcomingFollowUps,
-    deleteLead
+    deleteLead,
+    assignNurturingSequence,
+    advanceNurturingStep,
+    getNurturingProgress
 } = require('../controllers/leadController');
 
 const { protect, authorizeCoach } = require('../middleware/auth');
@@ -33,5 +36,11 @@ router.route('/:id/followup')
     .post(addFollowUpNote);
 router.route('/followups/upcoming')
     .get(getUpcomingFollowUps);
+// Assign a nurturing sequence to a lead
+router.post('/assign-nurturing-sequence', assignNurturingSequence);
+// Advance a lead to the next nurturing step
+router.post('/advance-nurturing-step', advanceNurturingStep);
+// Get nurturing sequence progress for a lead
+router.get('/:leadId/nurturing-progress', getNurturingProgress);
 
 module.exports = router;

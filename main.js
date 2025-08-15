@@ -33,6 +33,7 @@ const coachRoutes = require('./routes/coachRoutes');
 const metaRoutes = require('./routes/metaRoutes.js');
 const paymentRoutes = require('./routes/paymentRoutes.js');
 const staffRoutes = require('./routes/staffRoutes.js');
+const adsRoutes = require('./routes/adsRoutes');
 
 // --- Import the worker initialization functions ---
 const initRulesEngineWorker = require('./workers/worker_rules_engine');
@@ -69,6 +70,9 @@ const allApiRoutes = {
         { method: 'POST', path: '/api/leads/:id/followup', desc: 'Add Follow-up Note', sample: { note: 'Called the lead', nextFollowUpAt: '2025-01-20T10:00:00Z' } },
         { method: 'GET', path: '/api/leads/followups/upcoming', desc: 'Get Leads for Upcoming Follow-ups' },
         { method: 'POST', path: '/api/leads/:id/ai-rescore', desc: 'AI Rescore a Lead' },
+        { method: 'POST', path: '/api/leads/assign-nurturing-sequence', desc: 'Assign a nurturing sequence to a lead', sample: { leadId: '...', sequenceId: '...' } },
+        { method: 'POST', path: '/api/leads/advance-nurturing-step', desc: 'Advance a lead to the next nurturing step', sample: { leadId: '...' } },
+        { method: 'GET', path: '/api/leads/:leadId/nurturing-progress', desc: 'Get nurturing sequence progress for a lead' },
     ],
     '📊 MLM Network': [
         { method: 'POST', path: '/api/mlm/downline', desc: 'Adds a new coach to the downline', sample: { name: 'Coach B', email: 'b@ex.com', password: 'Passw0rd!', sponsorId: '...' } },
@@ -114,6 +118,29 @@ const allApiRoutes = {
     '🌐 Public Funnel Pages': [
         { method: 'GET', path: '/funnels/:funnelSlug/:pageSlug', desc: 'Render a public funnel page' },
     ],
+    '📢 Marketing & Advertising': [
+        { method: 'GET', path: '/api/ads', desc: 'List all ad campaigns for coach' },
+        { method: 'POST', path: '/api/ads/create', desc: 'Create a new ad campaign', sample: { coachMetaAccountId: '123456789', campaignData: { name: 'My Campaign', objective: 'LEAD_GENERATION', budget: 100 } } },
+        { method: 'POST', path: '/api/ads/sync', desc: 'Sync campaigns from Meta to DB', sample: { coachMetaAccountId: '123456789' } },
+        { method: 'PUT', path: '/api/ads/:campaignId', desc: 'Update an ad campaign', sample: { name: 'Updated Name', budget: 200 } },
+        { method: 'POST', path: '/api/ads/:campaignId/pause', desc: 'Pause an ad campaign' },
+        { method: 'POST', path: '/api/ads/:campaignId/resume', desc: 'Resume an ad campaign' },
+        { method: 'GET', path: '/api/ads/:campaignId/analytics', desc: 'Get analytics/insights for a campaign' },
+        { method: 'POST', path: '/api/ads/upload-image', desc: 'Upload image and get Meta image hash', sample: { imageUrl: 'https://example.com/image.jpg' } },
+        { method: 'POST', path: '/api/ads/:campaignId/ad-sets', desc: 'Create ad set for targeting and budget', sample: { name: 'Target Audience', targeting: { age_min: 25, age_max: 45, geo_locations: { countries: ['US'] } }, daily_budget: 2500 } },
+        { method: 'POST', path: '/api/ads/:campaignId/creatives', desc: 'Create ad creative with image and text', sample: { name: 'Website Creative', object_story_spec: { link_data: { link: 'https://yourwebsite.com', message: 'Check out our amazing program!', image_hash: 'abc123...', call_to_action: { type: 'LEARN_MORE' } } } } },
+        { method: 'POST', path: '/api/ads/:campaignId/ads', desc: 'Create ad that combines ad set and creative', sample: { name: 'Website Traffic Ad', adset_id: 'adset_456', creative: { creative_id: 'creative_789' }, status: 'PAUSED' } },
+        { method: 'GET', path: '/api/ads/:campaignId/ad-sets', desc: 'List ad sets for a campaign' },
+        { method: 'GET', path: '/api/ads/:campaignId/creatives', desc: 'List ad creatives for a campaign' },
+        { method: 'GET', path: '/api/ads/:campaignId/ads', desc: 'List ads for a campaign' },
+        { method: 'POST', path: '/api/ads/create-url-campaign', desc: 'Create complete URL campaign (all-in-one)', sample: { 
+            coachMetaAccountId: '123456789', 
+            campaignData: { name: 'Website Traffic Q1', objective: 'LINK_CLICKS', status: 'PAUSED', daily_budget: 5000 }, 
+            adSetData: { name: 'Target Audience', targeting: { age_min: 25, age_max: 45, geo_locations: { countries: ['US'] } }, daily_budget: 2500, billing_event: 'IMPRESSIONS', optimization_goal: 'LINK_CLICKS' }, 
+            creativeData: { name: 'Website Creative', object_story_spec: { link_data: { link: 'https://yourfitnesswebsite.com', message: 'Transform your fitness journey today!', image_hash: 'abc123...', call_to_action: { type: 'LEARN_MORE' } } } }, 
+            adData: { name: 'Website Traffic Ad', status: 'PAUSED' } 
+        } }
+    ]
 };
 // --- END ROUTES DATA ---
 
@@ -152,6 +179,7 @@ app.use('/api/coach', coachRoutes);
 app.use('/api/whatsapp', metaRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/staff', staffRoutes);
+app.use('/api/ads', adsRoutes);
 
 
 // 🏠 Dynamic Homepage Route with new UI

@@ -133,6 +133,16 @@ const LeadSchema = new mongoose.Schema({
     score: {
         type: Number,
         default: 0
+    },
+    // --- Automated Lead Nurturing ---
+    nurturingSequence: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'NurturingSequence',
+        required: false
+    },
+    nurturingStepIndex: {
+        type: Number,
+        default: 0
     }
 
 }, {

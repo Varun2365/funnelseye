@@ -19,7 +19,7 @@
   literate={\{ }{{{}}}1{\} }{{{}}}1
 }
 
-\title{FunnelsEye Backend Documentation}
+\title{FunnelsEye Backend Comprehensive Documentation}
 \author{Project: PRJ\_YCT\_Final}
 \date{\today}
 
@@ -27,225 +27,465 @@
 \maketitle
 \tableofcontents
 
-\section{Overview}
-FunnelsEye is a Node.js/Express backend supporting funnel building, CRM, calendar/appointments, messaging (Meta WhatsApp API and Baileys, Baileys optional), automation via RabbitMQ workers, staff management, and public page rendering.\newline
-This document reflects the current implementation state and provides setup, architecture, major APIs, data models, workers, and known limitations.
+% =====================
+\section{Project Overview}
+FunnelsEye is a Node.js/Express backend for a SaaS platform supporting funnel building, CRM, calendar/appointments, messaging (Meta WhatsApp API and Baileys), automation via RabbitMQ, staff management, public page rendering, and Meta Ads integration. This document provides a comprehensive reference for all API endpoints, data models, automation, and integrations.
 
+% =====================
 \section{Tech Stack}
 \begin{itemize}[noitemsep]
   \item Node.js, Express, Socket.IO
   \item MongoDB with Mongoose
   \item RabbitMQ (topic exchanges) for events/actions
-  \item Meta WhatsApp Cloud API (outbound/inbound); Baileys (optional, skipped per scope)
-  \item Nodemailer for email (configurable SMTP)
+  \item Meta WhatsApp Cloud API, Baileys (optional)
+  \item Meta Ads API
+  \item Nodemailer for email
 \end{itemize}
 
-\section{Project Structure (Key Paths)}
+% =====================
+\section{Architecture}
 \begin{itemize}[noitemsep]
   \item \texttt{main.js}: Server entrypoint, route mounts, UI docs
   \item \texttt{controllers/*}: Request handlers
   \item \texttt{routes/*}: Express route definitions
   \item \texttt{schema/*}: Mongoose models
-  \item \texttt{services/*}: Domain services (calendar, automation, messaging, queue)
-  \item \texttt{workers/*}: Queue workers (rules engine, executor, scheduler, payments)
+  \item \texttt{services/*}: Domain services (calendar, automation, messaging, ads, queue)
+  \item \texttt{workers/*}: Queue workers (rules engine, executor, scheduler, payments, nurturing)
   \item \texttt{tasks/*}: Cron tasks (inactive coach alerts)
   \item \texttt{config/db.js}: Mongo connection
 \end{itemize}
 
-\section{Setup}
-\subsection{Prerequisites}
-\begin{itemize}[noitemsep]
-  \item Node.js 18+ and npm
-  \item MongoDB running and accessible
-  \item RabbitMQ running (with x-delayed-message plugin for delayed exchange)
-\end{itemize}
+% =====================
+\section{Data Models}
+\subsection{User}
+Roles: \texttt{coach}, \texttt{admin}, \texttt{client}, \texttt{super\_admin}, \texttt{staff}
 
-\subsection{Environment Variables}
-Create a \texttt{.env} file in project root:
-\begin{itemize}[noitemsep]
-  \item \texttt{PORT=8080}
-  \item \texttt{MONGODB\_URI=mongodb://localhost:27017/FunnelsEye}
-  \item \texttt{JWT\_SECRET=replace\_me}\; \texttt{JWT\_EXPIRES\_IN=30d}
-  \item \texttt{RABBITMQ\_URL=amqp://localhost:5672}
-  \item \texttt{SMTP\_USER=your\_smtp\_user}\; \texttt{SMTP\_PASS=your\_smtp\_pass}
-  \item \texttt{WHATSAPP\_API\_URL=https://graph.facebook.com/v19.0}
-  \item \texttt{WHATSAPP\_CENTRAL\_API\_TOKEN=...}\; \texttt{WHATSAPP\_CENTRAL\_PHONE\_NUMBER\_ID=...}
-  \item \texttt{WHATSAPP\_WEBHOOK\_VERIFY\_TOKEN=replace\_me}
-\end{itemize}
-
-\subsection{Install \\& Run}
-\begin{verbatim}
-npm install
-npm run start
-\end{verbatim}
-Server: \texttt{http://localhost:8080}
-
-\section{Authentication \\& Authorization}
-JWT-based. Middleware \texttt{protect} verifies token, attaches \texttt{req.user}, \texttt{req.role}, and \texttt{req.coachId}. For \textbf{staff}, \texttt{req.coachId} is set to the owning coach for scoping resources.
-
-\section{Data Models (Summary)}
+\subsection{Lead}
 \begin{itemize}
-  \item \textbf{User} (roles: \texttt{coach}, \texttt{admin}, \texttt{client}, \texttt{super\_admin}, \texttt{staff})
-  \item \textbf{Coach} (discriminator): portfolio, appointment settings, WhatsApp config, credits
-  \item \textbf{Staff}: discriminator with \texttt{coachId}, \texttt{permissions[]}, \texttt{isActive}
-  \item \textbf{Lead}: contact fields, status, \texttt{leadTemperature}, follow-ups, appointment subdoc, \texttt{score}
-  \item \textbf{Funnel}: stages (embedded), \texttt{funnelUrl}, target audience
-  \item \textbf{FunnelEvent}: analytics events (PageView, FormSubmission, etc.)
-  \item \textbf{Appointment}: \texttt{coachId}, \texttt{leadId} (ObjectId ref), start/duration, timezone
-  \item \textbf{Message} / \textbf{WhatsAppMessage}: inbound/outbound records
-  \item \textbf{AutomationRule}: trigger/ actions
-  \item \textbf{Payment}: payment metadata
-  \item \textbf{CoachAvailability}: working hours, unavailable slots, defaults, timezone
-  \item \textbf{File}: uploads metadata
+  \item coachId, funnelId, name, email, phone, country, city
+  \item status, leadTemperature, source, targetAudience, notes
+  \item lastFollowUpAt, nextFollowUpAt, followUpHistory, assignedTo
+  \item appointment (status, scheduledTime, zoomLink, assignedStaffId)
+  \item score (lead score), nurturingSequence, nurturingStepIndex
 \end{itemize}
 
-\section{Services}
-\subsection{Calendar}
-\texttt{services/calendarService.js} implements:
-\begin{itemize}[noitemsep]
-  \item \texttt{getAvailableSlots(coachId, date)}
-  \item \texttt{bookAppointment(coachId, leadId, startTime, duration, notes, timeZone)}
-  \item \texttt{rescheduleAppointment(appointmentId, coachId, newStartTime, newDuration)}
-  \item \texttt{cancelAppointment(appointmentId, coachId)}
+\subsection{NurturingSequence}
+\begin{itemize}
+  \item name, description, steps (actionType, actionConfig, delayDays, conditions), createdBy, isActive
 \end{itemize}
 
-\subsection{Automation}
-\texttt{rabbitmqProducer} (publish/consume), workers (rules engine, executor, scheduled), and \texttt{actionExecutorService} (actions like send email/SMS, update lead, AI score stub). \texttt{automationProcessor} also provides event-driven hooks for rules.
-
-\subsection{Messaging}
-\texttt{metaWhatsAppService} integrates Meta webhook and outbound; Baileys support exists via \texttt{whatsappManager} but can be skipped.
-
-\section{Workers}
-\begin{itemize}[noitemsep]
-  \item \textbf{worker\_rules\_engine}: list\&bind to events, map to rules, dispatch actions (immediate or delayed)
-  \item \textbf{worker\_action\_executor}: consumes action topics, executes via \texttt{actionExecutorService}
-  \item \textbf{worker\_scheduled\_action\_executor}: handles delayed actions
-  \item \textbf{worker\_payment\_processor}: listens to \texttt{payment.received}, converts lead, emits \texttt{lead\_converted}
+\subsection{AdCampaign}
+\begin{itemize}
+  \item coachId, campaignId, name, status, objective, budget, spend, currency
+  \item startDate, endDate, targeting, results, analytics, lastSynced, metaRaw
 \end{itemize}
 
-\section{Routes (Selected) with Samples}
-The homepage UI (\texttt{/}) also renders these endpoints and samples.
-
-\subsection{Auth}
+% =====================
+\section{API Endpoints}
+\subsection{Authentication}
 \begin{longtable}{p{2.5cm}p{10cm}}
 POST & \texttt{/api/auth/signup} \\
-\multicolumn{2}{p{13cm}}{\begin{lstlisting}[language=json]
+\multicolumn{2}{p{13cm}}{Registers a new user with the system.} \\
+\multicolumn{2}{p{13cm}}{\textbf{Sample Request:}}
+\begin{lstlisting}[language=json]
 {"name":"John Doe","email":"john@example.com","password":"Passw0rd!","role":"coach"}
-\end{lstlisting}} \\
+\end{lstlisting} \\
+\multicolumn{2}{p{13cm}}{\textbf{Sample Response:}}
+\begin{lstlisting}[language=json]
+{"success": true, "data": {"userId": "64f1a2b3c4d5e6f7a8b9c0d1", "role": "coach"}}
+\end{lstlisting} \\
 POST & \texttt{/api/auth/verify-otp} \\
-\multicolumn{2}{p{13cm}}{\begin{lstlisting}[language=json]
+\multicolumn{2}{p{13cm}}{Verifies OTP for user registration.} \\
+\multicolumn{2}{p{13cm}}{\textbf{Sample Request:}}
+\begin{lstlisting}[language=json]
 {"email":"john@example.com","otp":"123456"}
-\end{lstlisting}} \\
+\end{lstlisting} \\
+\multicolumn{2}{p{13cm}}{\textbf{Sample Response:}}
+\begin{lstlisting}[language=json]
+{"success": true, "message": "OTP verified successfully"}
+\end{lstlisting} \\
 POST & \texttt{/api/auth/login} \\
-\multicolumn{2}{p{13cm}}{\begin{lstlisting}[language=json]
+\multicolumn{2}{p{13cm}}{Logs in a user and returns JWT token.} \\
+\multicolumn{2}{p{13cm}}{\textbf{Sample Request:}}
+\begin{lstlisting}[language=json]
 {"email":"john@example.com","password":"Passw0rd!"}
-\end{lstlisting}} \\
+\end{lstlisting} \\
+\multicolumn{2}{p{13cm}}{\textbf{Sample Response:}}
+\begin{lstlisting}[language=json]
+{"success": true, "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...", "user": {"id": "64f1a2b3c4d5e6f7a8b9c0d1", "role": "coach"}}
+\end{lstlisting} \\
+GET & \texttt{/api/auth/me} \\
+\multicolumn{2}{p{13cm}}{Returns current authenticated user information.} \\
+\multicolumn{2}{p{13cm}}{\textbf{Sample Response:}}
+\begin{lstlisting}[language=json]
+{"success": true, "data": {"id": "64f1a2b3c4d5e6f7a8b9c0d1", "name": "John Doe", "email": "john@example.com", "role": "coach"}}
+\end{lstlisting} \\
 \end{longtable}
 
-\subsection{CRM / Leads}
+\subsection{Funnel Management}
 \begin{longtable}{p{2.5cm}p{10cm}}
-POST & \texttt{/api/leads} (public create) \\
-\multicolumn{2}{p{13cm}}{\begin{lstlisting}[language=json]
-{"coachId":"...","funnelId":"...","name":"Jane","email":"jane@ex.com","phone":"+11234567890","source":"Web Form"}
-\end{lstlisting}} \\
+GET & \texttt{/api/funnels/coach/:coachId/funnels} \\
+\multicolumn{2}{p{13cm}}{Get all funnels for a specific coach.} \\
+\multicolumn{2}{p{13cm}}{\textbf{Path Parameters:} coachId (string)} \\
+\multicolumn{2}{p{13cm}}{\textbf{Sample Response:}}
+\begin{lstlisting}[language=json]
+{"success": true, "data": [{"id": "64f1a2b3c4d5e6f7a8b9c0d1", "name": "My Funnel", "description": "Demo", "funnelUrl": "coach-1/demo-funnel"}]}
+\end{lstlisting} \\
+GET & \texttt{/api/funnels/coach/:coachId/funnels/:funnelId} \\
+\multicolumn{2}{p{13cm}}{Get single funnel details by ID.} \\
+\multicolumn{2}{p{13cm}}{\textbf{Path Parameters:} coachId (string), funnelId (string)} \\
+\multicolumn{2}{p{13cm}}{\textbf{Sample Response:}}
+\begin{lstlisting}[language=json]
+{"success": true, "data": {"id": "64f1a2b3c4d5e6f7a8b9c0d1", "name": "My Funnel", "stages": [], "analytics": {}}}
+\end{lstlisting} \\
+POST & \texttt{/api/funnels/coach/:coachId/funnels} \\
+\multicolumn{2}{p{13cm}}{Create a new funnel for a coach.} \\
+\multicolumn{2}{p{13cm}}{\textbf{Path Parameters:} coachId (string)} \\
+\multicolumn{2}{p{13cm}}{\textbf{Sample Request:}}
+\begin{lstlisting}[language=json]
+{"name":"My Funnel","description":"Demo","funnelUrl":"coach-1/demo-funnel","targetAudience":"customer","stages":[]}
+\end{lstlisting} \\
+\multicolumn{2}{p{13cm}}{\textbf{Sample Response:}}
+\begin{lstlisting}[language=json]
+{"success": true, "data": {"id": "64f1a2b3c4d5e6f7a8b9c0d1", "name": "My Funnel"}}
+\end{lstlisting} \\
+PUT & \texttt{/api/funnels/coach/:coachId/funnels/:funnelId} \\
+\multicolumn{2}{p{13cm}}{Update an existing funnel.} \\
+\multicolumn{2}{p{13cm}}{\textbf{Path Parameters:} coachId (string), funnelId (string)} \\
+\multicolumn{2}{p{13cm}}{\textbf{Sample Request:}}
+\begin{lstlisting}[language=json]
+{"name":"Updated Funnel Name"}
+\end{lstlisting} \\
+\multicolumn{2}{p{13cm}}{\textbf{Sample Response:}}
+\begin{lstlisting}[language=json]
+{"success": true, "data": {"id": "64f1a2b3c4d5e6f7a8b9c0d1", "name": "Updated Funnel Name"}}
+\end{lstlisting} \\
+DELETE & \texttt{/api/funnels/coach/:coachId/funnel/:funnelId} \\
+\multicolumn{2}{p{13cm}}{Delete a funnel.} \\
+\multicolumn{2}{p{13cm}}{\textbf{Path Parameters:} coachId (string), funnelId (string)} \\
+\multicolumn{2}{p{13cm}}{\textbf{Sample Response:}}
+\begin{lstlisting}[language=json]
+{"success": true, "message": "Funnel deleted successfully"}
+\end{lstlisting} \\
+GET & \texttt{/api/funnels/coach/:coachId/funnels/:funnelId/stages/:stageType} \\
+\multicolumn{2}{p{13cm}}{Get stages by type for a specific funnel.} \\
+\multicolumn{2}{p{13cm}}{\textbf{Path Parameters:} coachId (string), funnelId (string), stageType (string)} \\
+POST & \texttt{/api/funnels/:funnelId/stages} \\
+\multicolumn{2}{p{13cm}}{Add a new stage to a funnel.} \\
+\multicolumn{2}{p{13cm}}{\textbf{Path Parameters:} funnelId (string)} \\
+\multicolumn{2}{p{13cm}}{\textbf{Sample Request:}}
+\begin{lstlisting}[language=json]
+{"pageId":"landing-1","name":"Landing","type":"Landing","html":"<div>...</div>"}
+\end{lstlisting} \\
+PUT & \texttt{/api/funnels/:funnelId/stages/:stageSettingsId} \\
+\multicolumn{2}{p{13cm}}{Update stage settings.} \\
+\multicolumn{2}{p{13cm}}{\textbf{Path Parameters:} funnelId (string), stageSettingsId (string)} \\
+\multicolumn{2}{p{13cm}}{\textbf{Sample Request:}}
+\begin{lstlisting}[language=json]
+{"name":"New name","isEnabled":true}
+\end{lstlisting} \\
+POST & \texttt{/api/funnels/track} \\
+\multicolumn{2}{p{13cm}}{Track funnel events for analytics.} \\
+\multicolumn{2}{p{13cm}}{\textbf{Sample Request:}}
+\begin{lstlisting}[language=json]
+{"funnelId":"64f1a2b3c4d5e6f7a8b9c0d1","stageId":"64f1a2b3c4d5e6f7a8b9c0d2","eventType":"PageView","sessionId":"sess-123","metadata":{"ref":"ad"}}
+\end{lstlisting} \\
+GET & \texttt{/api/funnels/:funnelId/analytics} \\
+\multicolumn{2}{p{13cm}}{Get funnel analytics data.} \\
+\multicolumn{2}{p{13cm}}{\textbf{Path Parameters:} funnelId (string)} \\
+\end{longtable}
+
+\subsection{Lead Management (CRM)}
+\begin{longtable}{p{2.5cm}p{10cm}}
+POST & \texttt{/api/leads} \\
+\multicolumn{2}{p{13cm}}{Create a new lead (public endpoint).} \\
+\multicolumn{2}{p{13cm}}{\textbf{Sample Request:}}
+\begin{lstlisting}[language=json]
+{"coachId":"64f1a2b3c4d5e6f7a8b9c0d1","funnelId":"64f1a2b3c4d5e6f7a8b9c0d2","name":"Jane","email":"jane@ex.com","phone":"+11234567890","source":"Web Form"}
+\end{lstlisting} \\
+\multicolumn{2}{p{13cm}}{\textbf{Sample Response:}}
+\begin{lstlisting}[language=json]
+{"success": true, "data": {"id": "64f1a2b3c4d5e6f7a8b9c0d3", "name": "Jane", "email": "jane@ex.com"}}
+\end{lstlisting} \\
+GET & \texttt{/api/leads} \\
+\multicolumn{2}{p{13cm}}{Get all leads with filtering and pagination.} \\
+\multicolumn{2}{p{13cm}}{\textbf{Query Parameters:} status, temperature, assignedTo, nextFollowUpAt[lte], sort, page, limit} \\
+\multicolumn{2}{p{13cm}}{\textbf{Sample Response:}}
+\begin{lstlisting}[language=json]
+{"success": true, "count": 25, "total": 100, "pagination": {}, "data": [{"id": "64f1a2b3c4d5e6f7a8b9c0d3", "name": "Jane"}]}
+\end{lstlisting} \\
+GET & \texttt{/api/leads/:id} \\
+\multicolumn{2}{p{13cm}}{Get single lead by ID.} \\
+\multicolumn{2}{p{13cm}}{\textbf{Path Parameters:} id (string)} \\
 PUT & \texttt{/api/leads/:id} \\
-\multicolumn{2}{p{13cm}}{\begin{lstlisting}[language=json]
+\multicolumn{2}{p{13cm}}{Update a lead.} \\
+\multicolumn{2}{p{13cm}}{\textbf{Path Parameters:} id (string)} \\
+\multicolumn{2}{p{13cm}}{\textbf{Sample Request:}}
+\begin{lstlisting}[language=json]
 {"status":"Contacted","leadTemperature":"Hot"}
-\end{lstlisting}} \\
+\end{lstlisting} \\
+DELETE & \texttt{/api/leads/:id} \\
+\multicolumn{2}{p{13cm}}{Delete a lead.} \\
+\multicolumn{2}{p{13cm}}{\textbf{Path Parameters:} id (string)} \\
 POST & \texttt{/api/leads/:id/followup} \\
-\multicolumn{2}{p{13cm}}{\begin{lstlisting}[language=json]
+\multicolumn{2}{p{13cm}}{Add follow-up note to a lead.} \\
+\multicolumn{2}{p{13cm}}{\textbf{Path Parameters:} id (string)} \\
+\multicolumn{2}{p{13cm}}{\textbf{Sample Request:}}
+\begin{lstlisting}[language=json]
 {"note":"Called the lead","nextFollowUpAt":"2025-01-20T10:00:00Z"}
+\end{lstlisting} \\
+GET & \texttt{/api/leads/followups/upcoming} \\
+\multicolumn{2}{p{13cm}}{Get leads for upcoming follow-ups.} \\
+\multicolumn{2}{p{13cm}}{\textbf{Query Parameters:} days, includeOverdue} \\
+POST & \texttt{/api/leads/:id/ai-rescore} \\
+\multicolumn{2}{p{13cm}}{AI rescore a lead using heuristic scoring.} \\
+\multicolumn{2}{p{13cm}}{\textbf{Path Parameters:} id (string)} \\
+\multicolumn{2}{p{13cm}}{\textbf{Sample Response:}}
+\begin{lstlisting}[language=json]
+{"success": true, "data": {"leadId": "64f1a2b3c4d5e6f7a8b9c0d3", "score": 60, "explanation": ["Hot lead temperature: +30", "Lead source present: +5"]}}
+\end{lstlisting} \\
+POST & \texttt{/api/leads/assign-nurturing-sequence} \\
+\multicolumn{2}{p{13cm}}{Assign a nurturing sequence to a lead.} \\
+\multicolumn{2}{p{13cm}}{\textbf{Sample Request:}}
+\begin{lstlisting}[language=json]
+{"leadId":"64f1a2b3c4d5e6f7a8b9c0d3","sequenceId":"65a1b2c3d4e5f6a7b8c9d0e1"}
+\end{lstlisting} \\
+POST & \texttt{/api/leads/advance-nurturing-step} \\
+\multicolumn{2}{p{13cm}}{Advance a lead to the next nurturing step.} \\
+\multicolumn{2}{p{13cm}}{\textbf{Sample Request:}
+\begin{lstlisting}[language=json]
+{"leadId":"64f1a2b3c4d5e6f7a8b9c0d3"}
 \end{lstlisting}} \\
-POST & \texttt{/api/leads/:id/ai-rescore} (heuristic scoring) \\
+GET & \texttt{/api/leads/:leadId/nurturing-progress} \\
+\multicolumn{2}{p{13cm}}{Get nurturing sequence progress for a lead.} \\
+\multicolumn{2}{p{13cm}}{\textbf{Path Parameters:} leadId (string)} \\
+\multicolumn{2}{p{13cm}}{\textbf{Sample Response:}}
+\begin{lstlisting}[language=json]
+{"success": true, "data": {"sequence": {"name": "7-Day Nurture Sequence"}, "currentStep": {"actionType": "send_email"}, "stepIndex": 1}}
+\end{lstlisting} \\
 \end{longtable}
 
-\subsection{Calendar}
+\subsection{MLM Network}
 \begin{longtable}{p{2.5cm}p{10cm}}
-POST & \texttt{/api/coach/availability} \\
-\multicolumn{2}{p{13cm}}{\begin{lstlisting}[language=json]
-{"timeZone":"Asia/Kolkata","workingHours":[{"dayOfWeek":1,"startTime":"09:00","endTime":"17:00"}],"unavailableSlots":[],"slotDuration":30,"bufferTime":0}
-\end{lstlisting}} \\
-POST & \texttt{/api/coach/:coachId/book} \\
-\multicolumn{2}{p{13cm}}{\begin{lstlisting}[language=json]
-{"leadId":"...","startTime":"2025-01-21T09:00:00Z","duration":30,"notes":"Intro call","timeZone":"Asia/Kolkata"}
-\end{lstlisting}} \\
-PUT & \texttt{/api/coach/appointments/:id/reschedule} \\
-\multicolumn{2}{p{13cm}}{\begin{lstlisting}[language=json]
-{"newStartTime":"2025-01-22T10:00:00Z","newDuration":45}
-\end{lstlisting}} \\
-DELETE & \texttt{/api/coach/appointments/:id} \\
+POST & \texttt{/api/mlm/downline} \\
+\multicolumn{2}{p{13cm}}{Adds a new coach to the downline.} \\
+\multicolumn{2}{p{13cm}}{\textbf{Sample Request:}}
+\begin{lstlisting}[language=json]
+{"name":"Coach B","email":"b@ex.com","password":"Passw0rd!","sponsorId":"64f1a2b3c4d5e6f7a8b9c0d1"}
+\end{lstlisting} \\
+GET & \texttt{/api/mlm/downline/:sponsorId} \\
+\multicolumn{2}{p{13cm}}{Get a coach's direct downline.} \\
+\multicolumn{2}{p{13cm}}{\textbf{Path Parameters:} sponsorId (string)} \\
+GET & \texttt{/api/mlm/hierarchy/:coachId} \\
+\multicolumn{2}{p{13cm}}{Get the full downline hierarchy.} \\
+\multicolumn{2}{p{13cm}}{\textbf{Path Parameters:} coachId (string)} \\
 \end{longtable}
 
 \subsection{Staff Management}
 \begin{longtable}{p{2.5cm}p{10cm}}
-POST & \texttt{/api/staff} (create) \\
-\multicolumn{2}{p{13cm}}{\begin{lstlisting}[language=json]
+POST & \texttt{/api/staff} \\
+\multicolumn{2}{p{13cm}}{Create staff under coach.} \\
+\multicolumn{2}{p{13cm}}{\textbf{Sample Request:}}
+\begin{lstlisting}[language=json]
 {"name":"Assistant A","email":"assistant@ex.com","password":"Passw0rd!","permissions":["leads:read","leads:update"]}
-\end{lstlisting}} \\
-GET & \texttt{/api/staff} (list) \\
-PUT & \texttt{/api/staff/:id} (update) \\
-\multicolumn{2}{p{13cm}}{\begin{lstlisting}[language=json]
+\end{lstlisting} \\
+GET & \texttt{/api/staff} \\
+\multicolumn{2}{p{13cm}}{List staff of coach (admin can pass ?coachId=...).} \\
+\multicolumn{2}{p{13cm}}{\textbf{Query Parameters:} coachId (optional)} \\
+PUT & \texttt{/api/staff/:id} \\
+\multicolumn{2}{p{13cm}}{Update staff (name, permissions, isActive).} \\
+\multicolumn{2}{p{13cm}}{\textbf{Path Parameters:} id (string)} \\
+\multicolumn{2}{p{13cm}}{\textbf{Sample Request:}}
+\begin{lstlisting}[language=json]
 {"name":"Assistant A2","permissions":["leads:read"]}
-\end{lstlisting}} \\
-DELETE & \texttt{/api/staff/:id} (deactivate) \\
+\end{lstlisting} \\
+DELETE & \texttt{/api/staff/:id} \\
+\multicolumn{2}{p{13cm}}{Deactivate staff.} \\
+\multicolumn{2}{p{13cm}}{\textbf{Path Parameters:} id (string)} \\
 \end{longtable}
 
-\subsection{MLM / Downline}
+\subsection{Performance \& Commissions}
 \begin{longtable}{p{2.5cm}p{10cm}}
-POST & \texttt{/api/mlm/downline} \\
-\multicolumn{2}{p{13cm}}{\begin{lstlisting}[language=json]
-{"name":"Coach B","email":"b@ex.com","password":"Passw0rd!","sponsorId":"..."}
-\end{lstlisting}} \\
+POST & \texttt{/api/performance/record-sale} \\
+\multicolumn{2}{p{13cm}}{Record a new sale for a coach.} \\
+\multicolumn{2}{p{13cm}}{\textbf{Sample Request:}}
+\begin{lstlisting}[language=json]
+{"coachId":"64f1a2b3c4d5e6f7a8b9c0d1","amount":1000,"currency":"USD"}
+\end{lstlisting} \\
+GET & \texttt{/api/performance/downline/:coachId} \\
+\multicolumn{2}{p{13cm}}{Get total sales for downline coaches.} \\
+\multicolumn{2}{p{13cm}}{\textbf{Path Parameters:} coachId (string)} \\
 \end{longtable}
 
-\subsection{Payments}
+\subsection{Automation Rules}
 \begin{longtable}{p{2.5cm}p{10cm}}
-POST & \texttt{/api/payments/receive} (webhook) \\
-\multicolumn{2}{p{13cm}}{\begin{lstlisting}[language=json]
-{"paymentId":"gw_123","leadId":"...","amount":4999,"currency":"INR","status":"successful","paymentMethod":"card","gatewayResponse":{"id":"gw_123","sig":"..."}}
-\end{lstlisting}} \\
+POST & \texttt{/api/automation-rules} \\
+\multicolumn{2}{p{13cm}}{Create new automation rule.} \\
+\multicolumn{2}{p{13cm}}{\textbf{Sample Request:}}
+\begin{lstlisting}[language=json]
+{"name":"Hot lead message","coachId":"64f1a2b3c4d5e6f7a8b9c0d1","triggerEvent":"lead_temperature_changed","actions":[{"type":"send_whatsapp_message","config":{"message":"Hi {{leadData.name}}"}}]}
+\end{lstlisting} \\
 \end{longtable}
 
-\subsection{WhatsApp (Meta)}
+\subsection{WhatsApp Messaging (Meta API)}
 \begin{longtable}{p{2.5cm}p{10cm}}
+GET & \texttt{/api/whatsapp/webhook} \\
+\multicolumn{2}{p{13cm}}{Webhook verification (Meta).} \\
+\multicolumn{2}{p{13cm}}{\textbf{Query Parameters:} hub.mode, hub.verify_token, hub.challenge} \\
+POST & \texttt{/api/whatsapp/webhook} \\
+\multicolumn{2}{p{13cm}}{Receive incoming messages (Meta).} \\
+\multicolumn{2}{p{13cm}}{\textbf{Sample Request:}}
+\begin{lstlisting}[language=json]
+{"entry":[{"changes":[{"value":{"messages":[{"from":"911234567890","text":{"body":"Hi"},"type":"text"}],"metadata":{"phone_number_id":"..."}}}]}]}
+\end{lstlisting} \\
 POST & \texttt{/api/whatsapp/send-message} \\
-\multicolumn{2}{p{13cm}}{\begin{lstlisting}[language=json]
-{"coachId":"...","recipientPhoneNumber":"911234567890","messageContent":"Hello!"}
-\end{lstlisting}} \\
+\multicolumn{2}{p{13cm}}{Send outbound message.} \\
+\multicolumn{2}{p{13cm}}{\textbf{Sample Request:}}
+\begin{lstlisting}[language=json]
+{"coachId":"64f1a2b3c4d5e6f7a8b9c0d1","recipientPhoneNumber":"911234567890","messageContent":"Hello!"}
+\end{lstlisting} \\
 \end{longtable}
 
-\section{Public Funnel Rendering}
-\texttt{GET /funnels/:funnelSlug/:pageSlug} returns compiled HTML from funnel stage content (HTML/CSS/JS) and basic meta tags.
+\subsection{File Upload}
+\begin{longtable}{p{2.5cm}p{10cm}}
+POST & \texttt{/api/files/upload} \\
+\multicolumn{2}{p{13cm}}{Upload a file.} \\
+\multicolumn{2}{p{13cm}}{\textbf{Request:} multipart/form-data} \\
+\end{longtable}
 
-\section{Admin UI (\texttt{/} Homepage)}
-\begin{itemize}[noitemsep]
-  \item Sidebar tabs per domain
-  \item Endpoints table with sample JSON displayed inline
-  \item Search not included (simple static listing)
+\subsection{Priority Feed \& Calendar}
+\begin{longtable}{p{2.5cm}p{10cm}}
+GET & \texttt{/api/coach/daily-feed} \\
+\multicolumn{2}{p{13cm}}{Get daily prioritized suggestions.} \\
+GET & \texttt{/api/coach/:coachId/availability} \\
+\multicolumn{2}{p{13cm}}{Get coach availability settings.} \\
+\multicolumn{2}{p{13cm}}{\textbf{Path Parameters:} coachId (string)} \\
+POST & \texttt{/api/coach/availability} \\
+\multicolumn{2}{p{13cm}}{Set or update coach availability.} \\
+\multicolumn{2}{p{13cm}}{\textbf{Sample Request:}}
+\begin{lstlisting}[language=json]
+{"timeZone":"Asia/Kolkata","workingHours":[{"dayOfWeek":1,"startTime":"09:00","endTime":"17:00"}],"unavailableSlots":[],"slotDuration":30,"bufferTime":0}
+\end{lstlisting} \\
+GET & \texttt{/api/coach/:coachId/available-slots} \\
+\multicolumn{2}{p{13cm}}{Get bookable slots for a coach.} \\
+\multicolumn{2}{p{13cm}}{\textbf{Path Parameters:} coachId (string)} \\
+\multicolumn{2}{p{13cm}}{\textbf{Query Parameters:} date} \\
+POST & \texttt{/api/coach/:coachId/book} \\
+\multicolumn{2}{p{13cm}}{Book a new appointment.} \\
+\multicolumn{2}{p{13cm}}{\textbf{Path Parameters:} coachId (string)} \\
+\multicolumn{2}{p{13cm}}{\textbf{Sample Request:}}
+\begin{lstlisting}[language=json]
+{"leadId":"64f1a2b3c4d5e6f7a8b9c0d3","startTime":"2025-01-21T09:00:00Z","duration":30,"notes":"Intro call","timeZone":"Asia/Kolkata"}
+\end{lstlisting} \\
+PUT & \texttt{/api/coach/appointments/:id/reschedule} \\
+\multicolumn{2}{p{13cm}}{Reschedule an appointment.} \\
+\multicolumn{2}{p{13cm}}{\textbf{Path Parameters:} id (string)} \\
+\multicolumn{2}{p{13cm}}{\textbf{Sample Request:}}
+\begin{lstlisting}[language=json]
+{"newStartTime":"2025-01-22T10:00:00Z","newDuration":45}
+\end{lstlisting} \\
+DELETE & \texttt{/api/coach/appointments/:id} \\
+\multicolumn{2}{p{13cm}}{Cancel an appointment.} \\
+\multicolumn{2}{p{13cm}}{\textbf{Path Parameters:} id (string)} \\
+GET & \texttt{/api/coach/:coachId/calendar} \\
+\multicolumn{2}{p{13cm}}{Get calendar of coach.} \\
+\multicolumn{2}{p{13cm}}{\textbf{Path Parameters:} coachId (string)} \\
+PUT & \texttt{/api/coach/:id/profile} \\
+\multicolumn{2}{p{13cm}}{Update a coach's profile.} \\
+\multicolumn{2}{p{13cm}}{\textbf{Path Parameters:} id (string)} \\
+POST & \texttt{/api/coach/add-credits/:id} \\
+\multicolumn{2}{p{13cm}}{Add credits to a coach account.} \\
+\multicolumn{2}{p{13cm}}{\textbf{Path Parameters:} id (string)} \\
+\end{longtable}
+
+\subsection{Payment Processing}
+\begin{longtable}{p{2.5cm}p{10cm}}
+POST & \texttt{/api/payments/receive} \\
+\multicolumn{2}{p{13cm}}{Receive a new payment and trigger automations.} \\
+\multicolumn{2}{p{13cm}}{\textbf{Sample Request:}}
+\begin{lstlisting}[language=json]
+{"paymentId":"gw_123","leadId":"64f1a2b3c4d5e6f7a8b9c0d3","amount":4999,"currency":"INR","status":"successful","paymentMethod":"card","gatewayResponse":{"id":"gw_123","sig":"..."}}
+\end{lstlisting} \\
+\end{longtable}
+
+\subsection{Public Funnel Pages}
+\begin{longtable}{p{2.5cm}p{10cm}}
+GET & \texttt{/funnels/:funnelSlug/:pageSlug} \\
+\multicolumn{2}{p{13cm}}{Render a public funnel page.} \\
+\multicolumn{2}{p{13cm}}{\textbf{Path Parameters:} funnelSlug (string), pageSlug (string)} \\
+\multicolumn{2}{p{13cm}}{\textbf{Response:} HTML page} \\
+\end{longtable}
+
+\subsection{Marketing \& Advertising}
+\begin{longtable}{p{2.5cm}p{10cm}}
+GET & \texttt{/api/ads} \\
+\multicolumn{2}{p{13cm}}{List all ad campaigns for coach.} \\
+\multicolumn{2}{p{13cm}}{\textbf{Sample Response:}}
+\begin{lstlisting}[language=json]
+{"success": true, "data": [{"id": "64f1a2b3c4d5e6f7a8b9c0d1", "name": "My Campaign", "status": "ACTIVE"}]}
+\end{lstlisting} \\
+POST & \texttt{/api/ads/create} \\
+\multicolumn{2}{p{13cm}}{Create a new ad campaign.} \\
+\multicolumn{2}{p{13cm}}{\textbf{Sample Request:}}
+\begin{lstlisting}[language=json]
+{"coachMetaAccountId":"123456789","campaignData":{"name":"My Campaign","objective":"LEAD_GENERATION","budget":100}}
+\end{lstlisting} \\
+POST & \texttt{/api/ads/sync} \\
+\multicolumn{2}{p{13cm}}{Sync campaigns from Meta to DB.} \\
+\multicolumn{2}{p{13cm}}{\textbf{Sample Request:}}
+\begin{lstlisting}[language=json]
+{"coachMetaAccountId":"123456789"}
+\end{lstlisting} \\
+PUT & \texttt{/api/ads/:campaignId} \\
+\multicolumn{2}{p{13cm}}{Update an ad campaign.} \\
+\multicolumn{2}{p{13cm}}{\textbf{Path Parameters:} campaignId (string)} \\
+\multicolumn{2}{p{13cm}}{\textbf{Sample Request:}}
+\begin{lstlisting}[language=json]
+{"name":"Updated Name","budget":200}
+\end{lstlisting} \\
+POST & \texttt{/api/ads/:campaignId/pause} \\
+\multicolumn{2}{p{13cm}}{Pause an ad campaign.} \\
+\multicolumn{2}{p{13cm}}{\textbf{Path Parameters:} campaignId (string)} \\
+POST & \texttt{/api/ads/:campaignId/resume} \\
+\multicolumn{2}{p{13cm}}{Resume an ad campaign.} \\
+\multicolumn{2}{p{13cm}}{\textbf{Path Parameters:} campaignId (string)} \\
+GET & \texttt{/api/ads/:campaignId/analytics} \\
+\multicolumn{2}{p{13cm}}{Get analytics/insights for a campaign.} \\
+\multicolumn{2}{p{13cm}}{\textbf{Path Parameters:} campaignId (string)} \\
+\multicolumn{2}{p{13cm}}{\textbf{Sample Response:}}
+\begin{lstlisting}[language=json]
+{"success": true, "data": {"impressions": 1000, "clicks": 50, "conversions": 5, "cpc": 2.5}}
+\end{lstlisting} \\
+\end{longtable}
+
+% =====================
+\section{Automation, Workers, and Integrations}
+\begin{itemize}
+  \item Event-driven automation using RabbitMQ and workers
+  \item Nurturing sequence worker: schedules and advances leads through nurturing steps
+  \item Action executor worker: processes automation events (send email, add note, etc.)
+  \item Meta Ads integration: fetch, create, update, sync, and analyze ad campaigns
+  \item WhatsApp integration: send/receive messages via Meta API
 \end{itemize}
 
-\section{Known Limitations / TODO}
+% =====================
+\section{Known Limitations and TODOs}
 \begin{itemize}
-  \item AI Copy Agent integration (hooks exist; to be wired)
-  \item Advanced AI scoring (ML), explanations, dashboards
-  \item Calendar UX polish: ICS emails, timezone UI, reminder senders
-  \item WhatsApp advanced: context-aware replies, sentiment, escalation, sequencers
-  \item Commission engine/dashboards for MLM
-  \item Staff invites, fine-grained permission model, audit logs
-  \item Robust webhook signature verification and rate limiting across services
-  \item Observability (logs/metrics/traces), backups/DR, CI/CD
+  \item Some advanced AI/ML features are stubbed or planned
+  \item Advanced analytics, anomaly detection, and budget engine for ads are planned
+  \item Some advanced workflow, e-signature, and encrypted storage features are not yet implemented
 \end{itemize}
 
-\section{Changelog (Recent)}
+% =====================
+\section{Changelog (Recent Progress)}
 \begin{itemize}
-  \item Added staff management (role, schema, CRUD, routes, UI docs)
-  \item Calendar: reschedule and cancel endpoints; conflict-safe logic
-  \item CRM AI: heuristic rescore endpoint and automation action
-  \item Staff-aware scoping in auth; controllers use \texttt{req.coachId}
-  \item Docs UI: sample JSON and scrollability
-  \item Stability fixes: leadTemperature alignment, Appointment lead ref, message model exports, env-based configs
+  \item Added Meta Ads integration and campaign management endpoints
+  \item Completed automated lead nurturing with event-driven actions
+  \item Improved documentation and API UI
+  \item Refactored CRM scoring and nurturing logic
 \end{itemize}
 
 \end{document}
+
 
 
