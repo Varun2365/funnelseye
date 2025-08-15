@@ -1,0 +1,251 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{hyperref}
+\usepackage{longtable}
+\usepackage{listings}
+\usepackage{titlesec}
+\usepackage{enumitem}
+\usepackage{tocloft}
+\setlength{\cftbeforesecskip}{6pt}
+
+\lstdefinelanguage{json}{
+  basicstyle=\ttfamily\small,
+  numbers=left,
+  numberstyle=\tiny, stepnumber=1, numbersep=8pt,
+  showstringspaces=false,
+  breaklines=true,
+  frame=single,
+  morestring=[b]",
+  literate={\{ }{{{}}}1{\} }{{{}}}1
+}
+
+\title{FunnelsEye Backend Documentation}
+\author{Project: PRJ\_YCT\_Final}
+\date{\today}
+
+\begin{document}
+\maketitle
+\tableofcontents
+
+\section{Overview}
+FunnelsEye is a Node.js/Express backend supporting funnel building, CRM, calendar/appointments, messaging (Meta WhatsApp API and Baileys, Baileys optional), automation via RabbitMQ workers, staff management, and public page rendering.\newline
+This document reflects the current implementation state and provides setup, architecture, major APIs, data models, workers, and known limitations.
+
+\section{Tech Stack}
+\begin{itemize}[noitemsep]
+  \item Node.js, Express, Socket.IO
+  \item MongoDB with Mongoose
+  \item RabbitMQ (topic exchanges) for events/actions
+  \item Meta WhatsApp Cloud API (outbound/inbound); Baileys (optional, skipped per scope)
+  \item Nodemailer for email (configurable SMTP)
+\end{itemize}
+
+\section{Project Structure (Key Paths)}
+\begin{itemize}[noitemsep]
+  \item \texttt{main.js}: Server entrypoint, route mounts, UI docs
+  \item \texttt{controllers/*}: Request handlers
+  \item \texttt{routes/*}: Express route definitions
+  \item \texttt{schema/*}: Mongoose models
+  \item \texttt{services/*}: Domain services (calendar, automation, messaging, queue)
+  \item \texttt{workers/*}: Queue workers (rules engine, executor, scheduler, payments)
+  \item \texttt{tasks/*}: Cron tasks (inactive coach alerts)
+  \item \texttt{config/db.js}: Mongo connection
+\end{itemize}
+
+\section{Setup}
+\subsection{Prerequisites}
+\begin{itemize}[noitemsep]
+  \item Node.js 18+ and npm
+  \item MongoDB running and accessible
+  \item RabbitMQ running (with x-delayed-message plugin for delayed exchange)
+\end{itemize}
+
+\subsection{Environment Variables}
+Create a \texttt{.env} file in project root:
+\begin{itemize}[noitemsep]
+  \item \texttt{PORT=8080}
+  \item \texttt{MONGODB\_URI=mongodb://localhost:27017/FunnelsEye}
+  \item \texttt{JWT\_SECRET=replace\_me}\; \texttt{JWT\_EXPIRES\_IN=30d}
+  \item \texttt{RABBITMQ\_URL=amqp://localhost:5672}
+  \item \texttt{SMTP\_USER=your\_smtp\_user}\; \texttt{SMTP\_PASS=your\_smtp\_pass}
+  \item \texttt{WHATSAPP\_API\_URL=https://graph.facebook.com/v19.0}
+  \item \texttt{WHATSAPP\_CENTRAL\_API\_TOKEN=...}\; \texttt{WHATSAPP\_CENTRAL\_PHONE\_NUMBER\_ID=...}
+  \item \texttt{WHATSAPP\_WEBHOOK\_VERIFY\_TOKEN=replace\_me}
+\end{itemize}
+
+\subsection{Install \\& Run}
+\begin{verbatim}
+npm install
+npm run start
+\end{verbatim}
+Server: \texttt{http://localhost:8080}
+
+\section{Authentication \\& Authorization}
+JWT-based. Middleware \texttt{protect} verifies token, attaches \texttt{req.user}, \texttt{req.role}, and \texttt{req.coachId}. For \textbf{staff}, \texttt{req.coachId} is set to the owning coach for scoping resources.
+
+\section{Data Models (Summary)}
+\begin{itemize}
+  \item \textbf{User} (roles: \texttt{coach}, \texttt{admin}, \texttt{client}, \texttt{super\_admin}, \texttt{staff})
+  \item \textbf{Coach} (discriminator): portfolio, appointment settings, WhatsApp config, credits
+  \item \textbf{Staff}: discriminator with \texttt{coachId}, \texttt{permissions[]}, \texttt{isActive}
+  \item \textbf{Lead}: contact fields, status, \texttt{leadTemperature}, follow-ups, appointment subdoc, \texttt{score}
+  \item \textbf{Funnel}: stages (embedded), \texttt{funnelUrl}, target audience
+  \item \textbf{FunnelEvent}: analytics events (PageView, FormSubmission, etc.)
+  \item \textbf{Appointment}: \texttt{coachId}, \texttt{leadId} (ObjectId ref), start/duration, timezone
+  \item \textbf{Message} / \textbf{WhatsAppMessage}: inbound/outbound records
+  \item \textbf{AutomationRule}: trigger/ actions
+  \item \textbf{Payment}: payment metadata
+  \item \textbf{CoachAvailability}: working hours, unavailable slots, defaults, timezone
+  \item \textbf{File}: uploads metadata
+\end{itemize}
+
+\section{Services}
+\subsection{Calendar}
+\texttt{services/calendarService.js} implements:
+\begin{itemize}[noitemsep]
+  \item \texttt{getAvailableSlots(coachId, date)}
+  \item \texttt{bookAppointment(coachId, leadId, startTime, duration, notes, timeZone)}
+  \item \texttt{rescheduleAppointment(appointmentId, coachId, newStartTime, newDuration)}
+  \item \texttt{cancelAppointment(appointmentId, coachId)}
+\end{itemize}
+
+\subsection{Automation}
+\texttt{rabbitmqProducer} (publish/consume), workers (rules engine, executor, scheduled), and \texttt{actionExecutorService} (actions like send email/SMS, update lead, AI score stub). \texttt{automationProcessor} also provides event-driven hooks for rules.
+
+\subsection{Messaging}
+\texttt{metaWhatsAppService} integrates Meta webhook and outbound; Baileys support exists via \texttt{whatsappManager} but can be skipped.
+
+\section{Workers}
+\begin{itemize}[noitemsep]
+  \item \textbf{worker\_rules\_engine}: list\&bind to events, map to rules, dispatch actions (immediate or delayed)
+  \item \textbf{worker\_action\_executor}: consumes action topics, executes via \texttt{actionExecutorService}
+  \item \textbf{worker\_scheduled\_action\_executor}: handles delayed actions
+  \item \textbf{worker\_payment\_processor}: listens to \texttt{payment.received}, converts lead, emits \texttt{lead\_converted}
+\end{itemize}
+
+\section{Routes (Selected) with Samples}
+The homepage UI (\texttt{/}) also renders these endpoints and samples.
+
+\subsection{Auth}
+\begin{longtable}{p{2.5cm}p{10cm}}
+POST & \texttt{/api/auth/signup} \\
+\multicolumn{2}{p{13cm}}{\begin{lstlisting}[language=json]
+{"name":"John Doe","email":"john@example.com","password":"Passw0rd!","role":"coach"}
+\end{lstlisting}} \\
+POST & \texttt{/api/auth/verify-otp} \\
+\multicolumn{2}{p{13cm}}{\begin{lstlisting}[language=json]
+{"email":"john@example.com","otp":"123456"}
+\end{lstlisting}} \\
+POST & \texttt{/api/auth/login} \\
+\multicolumn{2}{p{13cm}}{\begin{lstlisting}[language=json]
+{"email":"john@example.com","password":"Passw0rd!"}
+\end{lstlisting}} \\
+\end{longtable}
+
+\subsection{CRM / Leads}
+\begin{longtable}{p{2.5cm}p{10cm}}
+POST & \texttt{/api/leads} (public create) \\
+\multicolumn{2}{p{13cm}}{\begin{lstlisting}[language=json]
+{"coachId":"...","funnelId":"...","name":"Jane","email":"jane@ex.com","phone":"+11234567890","source":"Web Form"}
+\end{lstlisting}} \\
+PUT & \texttt{/api/leads/:id} \\
+\multicolumn{2}{p{13cm}}{\begin{lstlisting}[language=json]
+{"status":"Contacted","leadTemperature":"Hot"}
+\end{lstlisting}} \\
+POST & \texttt{/api/leads/:id/followup} \\
+\multicolumn{2}{p{13cm}}{\begin{lstlisting}[language=json]
+{"note":"Called the lead","nextFollowUpAt":"2025-01-20T10:00:00Z"}
+\end{lstlisting}} \\
+POST & \texttt{/api/leads/:id/ai-rescore} (heuristic scoring) \\
+\end{longtable}
+
+\subsection{Calendar}
+\begin{longtable}{p{2.5cm}p{10cm}}
+POST & \texttt{/api/coach/availability} \\
+\multicolumn{2}{p{13cm}}{\begin{lstlisting}[language=json]
+{"timeZone":"Asia/Kolkata","workingHours":[{"dayOfWeek":1,"startTime":"09:00","endTime":"17:00"}],"unavailableSlots":[],"slotDuration":30,"bufferTime":0}
+\end{lstlisting}} \\
+POST & \texttt{/api/coach/:coachId/book} \\
+\multicolumn{2}{p{13cm}}{\begin{lstlisting}[language=json]
+{"leadId":"...","startTime":"2025-01-21T09:00:00Z","duration":30,"notes":"Intro call","timeZone":"Asia/Kolkata"}
+\end{lstlisting}} \\
+PUT & \texttt{/api/coach/appointments/:id/reschedule} \\
+\multicolumn{2}{p{13cm}}{\begin{lstlisting}[language=json]
+{"newStartTime":"2025-01-22T10:00:00Z","newDuration":45}
+\end{lstlisting}} \\
+DELETE & \texttt{/api/coach/appointments/:id} \\
+\end{longtable}
+
+\subsection{Staff Management}
+\begin{longtable}{p{2.5cm}p{10cm}}
+POST & \texttt{/api/staff} (create) \\
+\multicolumn{2}{p{13cm}}{\begin{lstlisting}[language=json]
+{"name":"Assistant A","email":"assistant@ex.com","password":"Passw0rd!","permissions":["leads:read","leads:update"]}
+\end{lstlisting}} \\
+GET & \texttt{/api/staff} (list) \\
+PUT & \texttt{/api/staff/:id} (update) \\
+\multicolumn{2}{p{13cm}}{\begin{lstlisting}[language=json]
+{"name":"Assistant A2","permissions":["leads:read"]}
+\end{lstlisting}} \\
+DELETE & \texttt{/api/staff/:id} (deactivate) \\
+\end{longtable}
+
+\subsection{MLM / Downline}
+\begin{longtable}{p{2.5cm}p{10cm}}
+POST & \texttt{/api/mlm/downline} \\
+\multicolumn{2}{p{13cm}}{\begin{lstlisting}[language=json]
+{"name":"Coach B","email":"b@ex.com","password":"Passw0rd!","sponsorId":"..."}
+\end{lstlisting}} \\
+\end{longtable}
+
+\subsection{Payments}
+\begin{longtable}{p{2.5cm}p{10cm}}
+POST & \texttt{/api/payments/receive} (webhook) \\
+\multicolumn{2}{p{13cm}}{\begin{lstlisting}[language=json]
+{"paymentId":"gw_123","leadId":"...","amount":4999,"currency":"INR","status":"successful","paymentMethod":"card","gatewayResponse":{"id":"gw_123","sig":"..."}}
+\end{lstlisting}} \\
+\end{longtable}
+
+\subsection{WhatsApp (Meta)}
+\begin{longtable}{p{2.5cm}p{10cm}}
+POST & \texttt{/api/whatsapp/send-message} \\
+\multicolumn{2}{p{13cm}}{\begin{lstlisting}[language=json]
+{"coachId":"...","recipientPhoneNumber":"911234567890","messageContent":"Hello!"}
+\end{lstlisting}} \\
+\end{longtable}
+
+\section{Public Funnel Rendering}
+\texttt{GET /funnels/:funnelSlug/:pageSlug} returns compiled HTML from funnel stage content (HTML/CSS/JS) and basic meta tags.
+
+\section{Admin UI (\texttt{/} Homepage)}
+\begin{itemize}[noitemsep]
+  \item Sidebar tabs per domain
+  \item Endpoints table with sample JSON displayed inline
+  \item Search not included (simple static listing)
+\end{itemize}
+
+\section{Known Limitations / TODO}
+\begin{itemize}
+  \item AI Copy Agent integration (hooks exist; to be wired)
+  \item Advanced AI scoring (ML), explanations, dashboards
+  \item Calendar UX polish: ICS emails, timezone UI, reminder senders
+  \item WhatsApp advanced: context-aware replies, sentiment, escalation, sequencers
+  \item Commission engine/dashboards for MLM
+  \item Staff invites, fine-grained permission model, audit logs
+  \item Robust webhook signature verification and rate limiting across services
+  \item Observability (logs/metrics/traces), backups/DR, CI/CD
+\end{itemize}
+
+\section{Changelog (Recent)}
+\begin{itemize}
+  \item Added staff management (role, schema, CRUD, routes, UI docs)
+  \item Calendar: reschedule and cancel endpoints; conflict-safe logic
+  \item CRM AI: heuristic rescore endpoint and automation action
+  \item Staff-aware scoping in auth; controllers use \texttt{req.coachId}
+  \item Docs UI: sample JSON and scrollability
+  \item Stability fixes: leadTemperature alignment, Appointment lead ref, message model exports, env-based configs
+\end{itemize}
+
+\end{document}
+
+

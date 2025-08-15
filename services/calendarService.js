@@ -136,7 +136,35 @@ const bookAppointment = async (coachId, leadId, startTime, duration, notes, time
     return newAppointment;
 };
 
+/**
+ * Reschedules an existing appointment to a new start time/duration (conflict safe)
+ */
+const rescheduleAppointment = async (appointmentId, coachId, newStartTime, newDuration) => {
+    const appt = await Appointment.findOne({ _id: appointmentId, coachId });
+    if (!appt) throw new Error('Appointment not found');
+    const targetDate = new Date(newStartTime).toISOString().split('T')[0];
+    const available = await getAvailableSlots(coachId, targetDate);
+    const isFree = available.some(s => new Date(s.startTime).getTime() === new Date(newStartTime).getTime());
+    if (!isFree) throw new Error('Requested new time is not available');
+    appt.startTime = new Date(newStartTime);
+    appt.duration = newDuration || appt.duration;
+    await appt.save();
+    return appt;
+};
+
+/**
+ * Cancels an appointment
+ */
+const cancelAppointment = async (appointmentId, coachId) => {
+    const appt = await Appointment.findOne({ _id: appointmentId, coachId });
+    if (!appt) throw new Error('Appointment not found');
+    await appt.deleteOne();
+    return true;
+};
+
 module.exports = {
     getAvailableSlots,
     bookAppointment,
+    rescheduleAppointment,
+    cancelAppointment
 };

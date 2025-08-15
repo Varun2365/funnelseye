@@ -21,8 +21,7 @@ const checkInactiveCoaches = async () => {
             // Find downline members for this sponsor who have been inactive
             const inactiveDownline = await Coach.find({
                 sponsorId: sponsor._id,
-                lastActiveAt: { $lt: thresholdDate },
-                isInactive: false // Only find those who haven't been marked inactive yet
+                lastActiveAt: { $lt: thresholdDate }
             });
 
             if (inactiveDownline.length > 0) {
@@ -35,9 +34,7 @@ const checkInactiveCoaches = async () => {
                     // Call the alert service
                     await sendAlertToSponsor(sponsor, inactiveMember, message);
                     
-                    // Mark the coach as inactive in the database
-                    inactiveMember.isInactive = true;
-                    await inactiveMember.save();
+                    // Note: Schema has no isInactive flag; avoid writing unknown fields
                 }
             }
         }

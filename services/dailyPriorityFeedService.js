@@ -46,7 +46,7 @@ const generateDailyPriorityFeed = async (coachId) => {
             feedItems.push({
                 type: 'Overdue Follow-up',
                 priority: 1,
-                title: `Overdue Follow-up for ${lead.firstName} ${lead.lastName || ''}`,
+                title: `Overdue Follow-up for ${lead.name}`,
                 description: `Scheduled for: ${lead.nextFollowUpAt ? lead.nextFollowUpAt.toLocaleString() : 'N/A'}. Current Status: ${lead.status}`,
                 leadId: lead._id,
                 leadName: lead.name,
@@ -69,7 +69,7 @@ const generateDailyPriorityFeed = async (coachId) => {
             feedItems.push({
                 type: 'Follow-up Today',
                 priority: 2,
-                title: `Follow-up today for ${lead.firstName} ${lead.lastName || ''}`,
+                title: `Follow-up today for ${lead.name}`,
                 description: `Scheduled for: ${lead.nextFollowUpAt ? lead.nextFollowUpAt.toLocaleString() : 'N/A'}. Current Status: ${lead.status}`,
                 leadId: lead._id,
                 leadName: lead.name,
@@ -98,7 +98,7 @@ const generateDailyPriorityFeed = async (coachId) => {
             feedItems.push({
                 type: 'New Hot Lead',
                 priority: 3,
-                title: `New Hot Lead: ${lead.firstName} ${lead.lastName || ''}`,
+                title: `New Hot Lead: ${lead.name}`,
                 description: `Source: ${lead.source || 'N/A'}. Current Status: ${lead.status}.`,
                 leadId: lead._id,
                 leadName: lead.name,
@@ -122,7 +122,7 @@ const generateDailyPriorityFeed = async (coachId) => {
             feedItems.push({
                 type: 'Stale Lead - Re-engage',
                 priority: 4,
-                title: `Re-engage: ${lead.firstName} ${lead.lastName || ''}`,
+                title: `Re-engage: ${lead.name}`,
                 description: `Last activity: ${lead.updatedAt ? lead.updatedAt.toLocaleString() : 'N/A'}. Status: ${lead.status}. Temp: ${lead.leadTemperature}.`,
                 leadId: lead._id,
                 leadName: lead.name,

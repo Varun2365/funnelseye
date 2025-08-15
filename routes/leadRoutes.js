@@ -27,6 +27,8 @@ router.route('/:id')
     .get(getLead)
     .put(updateLead)
     .delete(deleteLead);
+// AI rescore endpoint (protected)
+router.post('/:id/ai-rescore', require('../controllers/leadController').aiRescore);
 router.route('/:id/followup')
     .post(addFollowUpNote);
 router.route('/followups/upcoming')

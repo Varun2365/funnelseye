@@ -9,7 +9,7 @@ const FunnelEvent = require('../schema/FunnelEvent.js');
 
 const getFunnelAnalytics = asyncHandler(async (req, res, next) => {
     const { funnelId } = req.params;
-    const coachId = req.user.id;
+    const coachId = req.coachId;
 
     // Extract startDate and endDate from query parameters
     // Example: /api/funnels/:funnelId/analytics?startDate=2025-06-01T00:00:00Z&endDate=2025-06-30T23:59:59Z

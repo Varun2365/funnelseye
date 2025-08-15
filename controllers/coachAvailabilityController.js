@@ -3,7 +3,7 @@
 // --- Imports ---
 const CoachAvailability = require('../schema/CoachAvailability');
 const Appointment = require('../schema/Appointment');
-const { getAvailableSlots, bookAppointment: bookAppointmentService } = require('../services/calendarService'); // <-- NEW: Import from the new service
+const { getAvailableSlots, bookAppointment: bookAppointmentService, rescheduleAppointment, cancelAppointment } = require('../services/calendarService'); // <-- NEW: Import from the new service
 
 // Utility to wrap async functions for error handling
 const asyncHandler = (fn) => (req, res, next) => {
@@ -37,7 +37,7 @@ const getCoachAvailability = asyncHandler(async (req, res) => {
 });
 
 /**
- * @desc    Set or update the authenticated coach's availability
+ * @desc    Set or update the authenticated coach's availability
  * @route   POST /api/coach/availability
  * @access  Private (Coach)
  */
@@ -90,7 +90,7 @@ const setCoachAvailability = asyncHandler(async (req, res) => {
     }
 });
 /**
- * @desc    Get available booking slots for a coach on a specific day
+ * @desc    Get available booking slots for a coach on a specific day
  * @route   GET /api/coach/:coachId/available-slots?date=YYYY-MM-DD
  * @access  Public
  */
@@ -116,7 +116,7 @@ const getAvailableSlotsController = asyncHandler(async (req, res) => {
 });
 
 /**
- * @desc    Book an appointment with a coach
+ * @desc    Book an appointment with a coach
  * @route   POST /api/coach/:coachId/book
  * @access  Public
  */
@@ -132,6 +132,39 @@ const bookAppointmentController = asyncHandler(async (req, res) => {
     message: 'Appointment booked successfully.',
     appointmentDetails: newAppointment,
   });
+});
+
+/**
+ * @desc    Reschedule an existing appointment (protected)
+ * @route   PUT /api/coach/appointments/:id/reschedule
+ * @access  Private (Coach/Admin/Staff)
+ */
+const rescheduleAppointmentController = asyncHandler(async (req, res) => {
+  const appointmentId = req.params.id;
+  const { newStartTime, newDuration } = req.body;
+
+  if (!newStartTime) {
+    return res.status(400).json({ success: false, message: 'newStartTime is required.' });
+  }
+
+  const updated = await rescheduleAppointment(appointmentId, req.coachId, newStartTime, newDuration);
+
+  res.status(200).json({
+    success: true,
+    message: 'Appointment rescheduled successfully.',
+    appointmentDetails: updated,
+  });
+});
+
+/**
+ * @desc    Cancel an appointment (protected)
+ * @route   DELETE /api/coach/appointments/:id
+ * @access  Private (Coach/Admin/Staff)
+ */
+const cancelAppointmentController = asyncHandler(async (req, res) => {
+  const appointmentId = req.params.id;
+  await cancelAppointment(appointmentId, req.coachId);
+  res.status(200).json({ success: true, message: 'Appointment cancelled.' });
 });
 
 /**
@@ -193,4 +226,6 @@ module.exports = {
   getAvailableSlots: getAvailableSlotsController, // <-- CHANGED: Export the new controller function
   bookAppointment: bookAppointmentController, // <-- CHANGED: Export the new controller function
   getCoachCalendar,
+  rescheduleAppointment: rescheduleAppointmentController,
+  cancelAppointment: cancelAppointmentController,
 };

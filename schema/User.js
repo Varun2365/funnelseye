@@ -49,7 +49,7 @@ const userSchema = new mongoose.Schema({
     },
     role: {
         type: String,
-        enum: ['coach', 'admin', 'client', 'super_admin'],
+        enum: ['coach', 'admin', 'client', 'super_admin', 'staff'],
         default: 'client'
     },
     profilePictureUrl: {

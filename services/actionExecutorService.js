@@ -58,6 +58,15 @@ const aiService = {
         const sentimentResult = 'neutral';
         console.log('[Service] Sentiment detected successfully.');
         return sentimentResult;
+    },
+    scoreLead: async (lead) => {
+        // Simple heuristic scoring stub: can be replaced with ML/AI later
+        let score = 0;
+        if (lead.leadTemperature === 'Hot') score += 30;
+        if (lead.source) score += 5;
+        if (lead.email && lead.phone) score += 15; else if (lead.email || lead.phone) score += 5;
+        if (lead.nextFollowUpAt) score += 10;
+        return Math.min(100, score);
     }
 };
 
@@ -193,7 +202,14 @@ async function updateLeadScore(config, eventPayload) {
     const { scoreIncrement } = config;
     if (!leadId) { throw new Error('Lead ID not found.'); }
     if (typeof scoreIncrement !== 'number') { throw new Error('Invalid scoreIncrement.'); }
-    await Lead.findByIdAndUpdate(leadId, { $inc: { 'appointment.score': scoreIncrement } });
+    await Lead.findByIdAndUpdate(leadId, { $inc: { score: scoreIncrement } });
+}
+
+async function aiRescoreLead(config, eventPayload) {
+    const leadData = eventPayload.relatedDoc;
+    if (!leadData || !leadData._id) { throw new Error('Lead data missing for AI scoring.'); }
+    const score = await aiService.scoreLead(leadData);
+    await Lead.findByIdAndUpdate(leadData._id, { $set: { score } });
 }
 
 /**
@@ -260,6 +276,9 @@ async function executeAutomationAction(payload) {
                 break;
             case 'update_lead_score':
                 await updateLeadScore(config, eventPayload);
+                break;
+            case 'ai_rescore_lead':
+                await aiRescoreLead(config, eventPayload);
                 break;
             case 'create_new_task':
                 await createNewTask(config, eventPayload);

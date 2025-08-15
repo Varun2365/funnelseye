@@ -7,7 +7,9 @@ const {
     setCoachAvailability, 
     getAvailableSlots, 
     bookAppointment, 
-    getCoachCalendar 
+    getCoachCalendar,
+    rescheduleAppointment,
+    cancelAppointment
 } = require('../controllers/coachAvailabilityController');
 const { 
     initiateBookingRecovery, 
@@ -27,6 +29,9 @@ router.post('/availability', protect, updateLastActive, authorizeCoach('coach', 
 router.get('/:coachId/available-slots', getAvailableSlots);
 router.post('/:coachId/book', bookAppointment);
 router.get('/:coachId/calendar', getCoachCalendar);
+// Reschedule/cancel endpoints (protected)
+router.put('/appointments/:id/reschedule', protect, updateLastActive, authorizeCoach('coach','admin','staff'), rescheduleAppointment);
+router.delete('/appointments/:id', protect, updateLastActive, authorizeCoach('coach','admin','staff'), cancelAppointment);
 
 // --- NEW: Booking Recovery Routes ---
 // @desc    Initiate a booking recovery session when a user visits the booking page

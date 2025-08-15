@@ -9,6 +9,7 @@ const Lead = require('../schema/Lead');
 const META_API_URL = process.env.WHATSAPP_API_URL || 'https://graph.facebook.com/v19.0';
 const CENTRAL_API_TOKEN = process.env.WHATSAPP_CENTRAL_API_TOKEN;
 const CENTRAL_PHONE_NUMBER_ID = process.env.WHATSAPP_CENTRAL_PHONE_NUMBER_ID;
+const WEBHOOK_VERIFY_TOKEN = process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN;
 
 /**
  * Sends a WhatsApp message using either the central or a coach's personal account.

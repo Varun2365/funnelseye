@@ -3,6 +3,7 @@
 const Lead = require('../schema/Lead');
 const Funnel = require('../schema/Funnel');
 const { publishEvent } = require('../services/rabbitmqProducer');
+const LeadModel = require('../schema/Lead');
 
 // @desc    Create a new Lead
 // @route   POST /api/leads
@@ -149,7 +150,7 @@ const getLeads = async (req, res) => {
 // @access  Private (Coaches/Admins)
 const getLead = async (req, res) => {
     try {
-        const lead = await Lead.findOne({ _id: req.params.id, coachId: req.user.id })
+        const lead = await Lead.findOne({ _id: req.params.id, coachId: req.coachId })
             .populate('funnelId', 'name')
             .populate('assignedTo', 'name')
             .populate('followUpHistory.createdBy', 'name');
@@ -185,7 +186,7 @@ const getLead = async (req, res) => {
 // @access  Private (Coaches/Admins)
 const updateLead = async (req, res) => {
     try {
-        const existingLead = await Lead.findOne({ _id: req.params.id, coachId: req.user.id });
+        const existingLead = await Lead.findOne({ _id: req.params.id, coachId: req.coachId });
 
         if (!existingLead) {
             return res.status(404).json({
@@ -195,10 +196,10 @@ const updateLead = async (req, res) => {
         }
 
         const oldStatus = existingLead.status;
-        const oldTemperature = existingLead.temperature;
+        const oldTemperature = existingLead.leadTemperature;
         const oldAssignedTo = existingLead.assignedTo ? existingLead.assignedTo.toString() : null;
 
-        const updatedLead = await Lead.findByIdAndUpdate(req.params.id, req.body, {
+        const updatedLead = await Lead.findOneAndUpdate({ _id: req.params.id, coachId: req.coachId }, req.body, {
             new: true,
             runValidators: true
         });
@@ -219,7 +220,7 @@ const updateLead = async (req, res) => {
             publishEvent(eventName, eventPayload).catch(err => console.error(`[Controller] Failed to publish event: ${eventName}`, err));
         }
 
-        if (updatedLead.temperature !== oldTemperature) {
+        if (updatedLead.leadTemperature !== oldTemperature) {
             const eventName = 'lead_temperature_changed';
             const eventPayload = {
                 eventName: eventName,
@@ -227,7 +228,7 @@ const updateLead = async (req, res) => {
                     leadId: updatedLead._id,
                     leadData: updatedLead.toObject(),
                     oldTemperature: oldTemperature,
-                    newTemperature: updatedLead.temperature,
+                    newTemperature: updatedLead.leadTemperature,
                     coachId: req.user.id,
                 }
             };
@@ -282,7 +283,7 @@ const updateLead = async (req, res) => {
 // @access  Private (Coaches/Admins)
 const addFollowUpNote = async (req, res) => {
     try {
-        let lead = await Lead.findOne({ _id: req.params.id, coachId: req.user.id });
+        let lead = await Lead.findOne({ _id: req.params.id, coachId: req.coachId });
 
         if (!lead) {
             return res.status(404).json({
@@ -324,7 +325,7 @@ const addFollowUpNote = async (req, res) => {
 
         await lead.save();
 
-        lead = await Lead.findOne({ _id: req.params.id, coachId: req.user.id })
+        lead = await Lead.findOne({ _id: req.params.id, coachId: req.coachId })
             .populate('funnelId', 'name')
             .populate('assignedTo', 'name')
             .populate('followUpHistory.createdBy', 'name');
@@ -369,7 +370,7 @@ const addFollowUpNote = async (req, res) => {
 // @access  Private (Coaches/Admins)
 const getUpcomingFollowUps = async (req, res) => {
     try {
-        const coachId = req.user.id;
+        const coachId = req.coachId;
         const days = parseInt(req.query.days, 10) || 7;
         const includeOverdue = req.query.includeOverdue === 'true';
 
@@ -413,7 +414,7 @@ const getUpcomingFollowUps = async (req, res) => {
 // @access  Private (Coaches/Admins)
 const deleteLead = async (req, res) => {
     try {
-        const lead = await Lead.findOne({ _id: req.params.id, coachId: req.user.id });
+        const lead = await Lead.findOne({ _id: req.params.id, coachId: req.coachId });
 
         if (!lead) {
             return res.status(404).json({
@@ -463,5 +464,25 @@ module.exports = {
     updateLead,
     addFollowUpNote,
     getUpcomingFollowUps,
-    deleteLead
+    deleteLead,
+    // simple AI rescore endpoint handler
+    aiRescore: async (req, res) => {
+        try {
+            const lead = await LeadModel.findOne({ _id: req.params.id, coachId: req.coachId });
+            if (!lead) return res.status(404).json({ success: false, message: 'Lead not found' });
+            // reuse heuristic from actionExecutorService (duplicated minimal logic to avoid coupling)
+            let score = 0;
+            if (lead.leadTemperature === 'Hot') score += 30;
+            if (lead.source) score += 5;
+            if (lead.email && lead.phone) score += 15; else if (lead.email || lead.phone) score += 5;
+            if (lead.nextFollowUpAt) score += 10;
+            score = Math.min(100, score);
+            lead.score = score;
+            await lead.save();
+            return res.status(200).json({ success: true, data: { leadId: lead._id, score } });
+        } catch (e) {
+            console.error('AI rescore error:', e);
+            return res.status(500).json({ success: false, message: 'Server error during AI rescore.' });
+        }
+    }
 };

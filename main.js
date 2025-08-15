@@ -32,6 +32,7 @@ const mlmRoutes = require('./routes/mlmRoutes');
 const coachRoutes = require('./routes/coachRoutes');
 const metaRoutes = require('./routes/metaRoutes.js');
 const paymentRoutes = require('./routes/paymentRoutes.js');
+const staffRoutes = require('./routes/staffRoutes.js');
 
 // --- Import the worker initialization functions ---
 const initRulesEngineWorker = require('./workers/worker_rules_engine');
@@ -42,48 +43,55 @@ const initPaymentProcessorWorker = require('./workers/worker_payment_processor')
 // --- Define API Routes Data for both Console & HTML Table Generation ---
 const allApiRoutes = {
     '🔑 Authentication': [
-        { method: 'POST', path: '/api/auth/signup', desc: 'User Registration' },
-        { method: 'POST', path: '/api/auth/verify-otp', desc: 'OTP Verification' },
-        { method: 'POST', path: '/api/auth/login', desc: 'User Login' },
+        { method: 'POST', path: '/api/auth/signup', desc: 'User Registration', sample: { name: 'John Doe', email: 'john@example.com', password: 'Passw0rd!', role: 'coach' } },
+        { method: 'POST', path: '/api/auth/verify-otp', desc: 'OTP Verification', sample: { email: 'john@example.com', otp: '123456' } },
+        { method: 'POST', path: '/api/auth/login', desc: 'User Login', sample: { email: 'john@example.com', password: 'Passw0rd!' } },
         { method: 'GET', path: '/api/auth/me', desc: 'Get Current User' },
     ],
     '📈 Funnel Management': [
         { method: 'GET', path: '/api/funnels/coach/:coachId/funnels', desc: 'Get all Funnels for a Coach' },
         { method: 'GET', path: '/api/funnels/coach/:coachId/funnels/:funnelId', desc: 'Get Single Funnel Details' },
-        { method: 'POST', path: '/api/funnels/coach/:coachId/funnels', desc: 'Create New Funnel' },
-        { method: 'PUT', path: '/api/funnels/coach/:coachId/funnels/:funnelId', desc: 'Update Funnel' },
+        { method: 'POST', path: '/api/funnels/coach/:coachId/funnels', desc: 'Create New Funnel', sample: { name: 'My Funnel', description: 'Demo', funnelUrl: 'coach-1/demo-funnel', targetAudience: 'customer', stages: [] } },
+        { method: 'PUT', path: '/api/funnels/coach/:coachId/funnels/:funnelId', desc: 'Update Funnel', sample: { name: 'Updated Funnel Name' } },
         { method: 'DELETE', path: '/api/funnels/coach/:coachId/funnel/:funnelId', desc: 'Delete Funnel' },
         { method: 'GET', path: '/api/funnels/coach/:coachId/funnels/:funnelId/stages/:stageType', desc: 'Get Stages by Type' },
-        { method: 'POST', path: '/api/funnels/:funnelId/stages', desc: 'Add Stage to Funnel' },
-        { method: 'PUT', path: '/api/funnels/:funnelId/stages/:stageSettingsId', desc: 'Update Stage Settings' },
-        { method: 'POST', path: '/api/funnels/track', desc: 'Track Funnel Event' },
+        { method: 'POST', path: '/api/funnels/:funnelId/stages', desc: 'Add Stage to Funnel', sample: { pageId: 'landing-1', name: 'Landing', type: 'Landing', html: '<div>...</div>' } },
+        { method: 'PUT', path: '/api/funnels/:funnelId/stages/:stageSettingsId', desc: 'Update Stage Settings', sample: { name: 'New name', isEnabled: true } },
+        { method: 'POST', path: '/api/funnels/track', desc: 'Track Funnel Event', sample: { funnelId: '...', stageId: '...', eventType: 'PageView', sessionId: 'sess-123', metadata: { ref: 'ad' } } },
         { method: 'GET', path: '/api/funnels/:funnelId/analytics', desc: 'Get Funnel Analytics Data' },
     ],
     '🎯 Lead Management (CRM)': [
-        { method: 'POST', path: '/api/leads', desc: 'Create New Lead (PUBLIC)' },
+        { method: 'POST', path: '/api/leads', desc: 'Create New Lead (PUBLIC)', sample: { coachId: '...', funnelId: '...', name: 'Jane', email: 'jane@ex.com', phone: '+11234567890', source: 'Web Form' } },
         { method: 'GET', path: '/api/leads', desc: 'Get All Leads (filters/pagination)' },
         { method: 'GET', path: '/api/leads/:id', desc: 'Get Single Lead by ID' },
-        { method: 'PUT', path: '/api/leads/:id', desc: 'Update Lead' },
+        { method: 'PUT', path: '/api/leads/:id', desc: 'Update Lead', sample: { status: 'Contacted', leadTemperature: 'Hot' } },
         { method: 'DELETE', path: '/api/leads/:id', desc: 'Delete Lead' },
-        { method: 'POST', path: '/api/leads/:id/followup', desc: 'Add Follow-up Note' },
+        { method: 'POST', path: '/api/leads/:id/followup', desc: 'Add Follow-up Note', sample: { note: 'Called the lead', nextFollowUpAt: '2025-01-20T10:00:00Z' } },
         { method: 'GET', path: '/api/leads/followups/upcoming', desc: 'Get Leads for Upcoming Follow-ups' },
+        { method: 'POST', path: '/api/leads/:id/ai-rescore', desc: 'AI Rescore a Lead' },
     ],
     '📊 MLM Network': [
-        { method: 'POST', path: '/api/mlm/downline', desc: 'Adds a new coach to the downline' },
+        { method: 'POST', path: '/api/mlm/downline', desc: 'Adds a new coach to the downline', sample: { name: 'Coach B', email: 'b@ex.com', password: 'Passw0rd!', sponsorId: '...' } },
         { method: 'GET', path: '/api/mlm/downline/:sponsorId', desc: 'Get a coaches direct downline' },
         { method: 'GET', path: '/api/mlm/hierarchy/:coachId', desc: 'Get the full downline hierarchy' },
     ],
+    '👥 Staff Management': [
+        { method: 'POST', path: '/api/staff', desc: 'Create staff under coach', sample: { name: 'Assistant A', email: 'assistant@ex.com', password: 'Passw0rd!', permissions: ['leads:read','leads:update'] } },
+        { method: 'GET', path: '/api/staff', desc: 'List staff of coach (admin can pass ?coachId=...)' },
+        { method: 'PUT', path: '/api/staff/:id', desc: 'Update staff (name, permissions, isActive)', sample: { name: 'Assistant A2', permissions: ['leads:read'] } },
+        { method: 'DELETE', path: '/api/staff/:id', desc: 'Deactivate staff' },
+    ],
     '💰 Performance & Commissions': [
-        { method: 'POST', path: '/api/performance/record-sale', desc: 'Record a new sale for a coach' },
+        { method: 'POST', path: '/api/performance/record-sale', desc: 'Record a new sale for a coach', sample: { coachId: '...', amount: 1000, currency: 'USD' } },
         { method: 'GET', path: '/api/performance/downline/:coachId', desc: 'Get total sales for downline coaches' },
     ],
     '⚙️ Automation Rules': [
-        { method: 'POST', path: '/api/automation-rules', desc: 'Create New Automation Rule' },
+        { method: 'POST', path: '/api/automation-rules', desc: 'Create New Automation Rule', sample: { name: 'Hot lead message', coachId: '...', triggerEvent: 'lead_temperature_changed', actions: [{ type: 'send_whatsapp_message', config: { message: 'Hi {{leadData.name}}' } }] } },
     ],
     '💬 WhatsApp Messaging (Meta API)': [
         { method: 'GET', path: '/api/whatsapp/webhook', desc: 'Webhook Verification (Meta)' },
-        { method: 'POST', path: '/api/whatsapp/webhook', desc: 'Receive Incoming Messages (Meta)' },
-        { method: 'POST', path: '/api/whatsapp/send-message', desc: 'Send Outbound Message' },
+        { method: 'POST', path: '/api/whatsapp/webhook', desc: 'Receive Incoming Messages (Meta)', sample: { entry: [{ changes: [{ value: { messages: [{ from: '911234567890', text: { body: 'Hi' }, type: 'text' }], metadata: { phone_number_id: '...' } } }] }] } },
+        { method: 'POST', path: '/api/whatsapp/send-message', desc: 'Send Outbound Message', sample: { coachId: '...', recipientPhoneNumber: '911234567890', messageContent: 'Hello!' } },
     ],
     '📁 File Upload': [
         { method: 'POST', path: '/api/files/upload', desc: 'Upload a file' },
@@ -91,15 +99,17 @@ const allApiRoutes = {
     '💡 Priority Feed & Calendar': [
         { method: 'GET', path: '/api/coach/daily-feed', desc: 'Get daily prioritized suggestions' },
         { method: 'GET', path: '/api/coach/:coachId/availability', desc: 'Get coach availability settings' },
-        { method: 'POST', path: '/api/coach/availability', desc: 'Set or update coach availability' },
+        { method: 'POST', path: '/api/coach/availability', desc: 'Set or update coach availability', sample: { timeZone: 'Asia/Kolkata', workingHours: [{ dayOfWeek: 1, startTime: '09:00', endTime: '17:00' }], unavailableSlots: [], slotDuration: 30, bufferTime: 0 } },
         { method: 'GET', path: '/api/coach/:coachId/available-slots', desc: 'Get bookable slots for a coach' },
-        { method: 'POST', path: '/api/coach/:coachId/book', desc: 'Book a new appointment' },
+        { method: 'POST', path: '/api/coach/:coachId/book', desc: 'Book a new appointment', sample: { leadId: '...', startTime: '2025-01-21T09:00:00Z', duration: 30, notes: 'Intro call', timeZone: 'Asia/Kolkata' } },
+        { method: 'PUT', path: '/api/coach/appointments/:id/reschedule', desc: 'Reschedule an appointment', sample: { newStartTime: '2025-01-22T10:00:00Z', newDuration: 45 } },
+        { method: 'DELETE', path: '/api/coach/appointments/:id', desc: 'Cancel an appointment' },
         { method: 'GET', path: '/api/coach/:coachId/calendar', desc: 'Get Calendar of Coach' },
         { method: 'PUT', path: '/api/coach/:id/profile', desc: 'Update a coaches profile' },
         { method: 'POST', path: '/api/coach/add-credits/:id', desc: 'Add credits to a coach account'}
     ],
     '💳 Payment Processing': [
-        { method: 'POST', path: '/api/payments/receive', desc: 'Receive a new payment and trigger automations' },
+        { method: 'POST', path: '/api/payments/receive', desc: 'Receive a new payment and trigger automations', sample: { paymentId: 'gw_123', leadId: '...', amount: 4999, currency: 'INR', status: 'successful', paymentMethod: 'card', gatewayResponse: { id: 'gw_123', sig: '...' } } },
     ],
     '🌐 Public Funnel Pages': [
         { method: 'GET', path: '/funnels/:funnelSlug/:pageSlug', desc: 'Render a public funnel page' },
@@ -141,6 +151,7 @@ app.use('/api/mlm', mlmRoutes);
 app.use('/api/coach', coachRoutes);
 app.use('/api/whatsapp', metaRoutes);
 app.use('/api/payments', paymentRoutes);
+app.use('/api/staff', staffRoutes);
 
 
 // 🏠 Dynamic Homepage Route with new UI
@@ -170,7 +181,10 @@ app.get('/', (req, res) => {
                 <tr>
                     <td class="method method-${route.method.toLowerCase()}">${route.method}</td>
                     <td>${route.path}</td>
-                    <td>${route.desc}</td>
+                    <td>
+                        ${route.desc}
+                        ${route.sample ? `<pre style="margin-top:8px;background:#0b1020;color:#d1e9ff;padding:10px;border-radius:6px;white-space:pre-wrap;">${JSON.stringify(route.sample, null, 2)}</pre>` : ''}
+                    </td>
                 </tr>
             `;
         });
@@ -207,7 +221,8 @@ app.get('/', (req, res) => {
                     background-color: var(--bg-color);
                     color: var(--text-color);
                     height: 100%;
-                    overflow: hidden;
+                    overflow-x: hidden;
+                    overflow-y: auto;
                 }
                 .background-bubbles {
                     position: absolute;
@@ -320,6 +335,8 @@ app.get('/', (req, res) => {
                     display: none;
                     flex: 1;
                     transition: all 0.5s ease-in-out;
+                    max-height: calc(100vh - 40px);
+                    overflow-y: auto;
                 }
                 .api-docs-container.visible {
                     display: flex;

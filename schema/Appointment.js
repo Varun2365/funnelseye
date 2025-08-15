@@ -9,7 +9,8 @@ const AppointmentSchema = new mongoose.Schema({
     required: true,
   },
   leadId: {
-    type: String, // Or mongoose.Schema.Types.ObjectId if you have a Lead model
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Lead',
     required: true,
   },
   startTime: {
