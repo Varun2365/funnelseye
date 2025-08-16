@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 // Define the MongoDB connection URI.
-const mongoURI = process.env.MONGODB_URI || 'mongodb://localhost:27017/FunnelsEye'; 
+const mongoURI = 'mongodb://localhost:27017/FunnelsEye'; 
 
 /**
  * Connects to the MongoDB database using Mongoose.

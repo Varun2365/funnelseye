@@ -9,7 +9,7 @@ const { executeAutomationAction } = require('../services/actionExecutorService')
 
 const RABBITMQ_URL = process.env.RABBITMQ_URL || 'amqp://localhost:5672';
 const SCHEDULED_ACTIONS_QUEUE = 'funnelseye_scheduled_actions';
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/FunnelsEye';
+const MONGODB_URI = 'mongodb://localhost:27017/FunnelsEye';
 const CHECK_INTERVAL_MINUTES = 10; // How often to check for due nurturing steps
 
 // Export this function so it can be called by main.js

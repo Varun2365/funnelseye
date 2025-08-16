@@ -18,7 +18,7 @@ const SCHEDULED_ACTIONS_QUEUE = 'funnelseye_scheduled_actions';
 // Export this function so it can be called by main.js
 const initRulesEngineWorker = async () => {
     try {
-        await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/FunnelsEye');
+        await mongoose.connect('mongodb://localhost:27017/FunnelsEye');
         console.log('[Rules Engine] Connected to MongoDB.');
 
         const connection = await amqp.connect(RABBITMQ_URL);

@@ -9,7 +9,7 @@ const ACTIONS_EXCHANGE = 'funnelseye_actions';
 
 const initActionExecutorWorker = async () => {
     try {
-        await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/FunnelsEye');
+        await mongoose.connect('mongodb://localhost:27017/FunnelsEye');
         console.log('[Action Executor] Connected to MongoDB.');
 
         const connection = await amqp.connect(RABBITMQ_URL);

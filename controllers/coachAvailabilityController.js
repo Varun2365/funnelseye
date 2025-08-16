@@ -38,8 +38,8 @@ const getCoachAvailability = asyncHandler(async (req, res) => {
 
 /**
  * @desc    Set or update the authenticated coach's availability
- * @route   POST /api/coach/availability
- * @access  Private (Coach)
+ * @route   POST /api/coach/availability
+ * @access  Private (Coach)
  */
 const setCoachAvailability = asyncHandler(async (req, res) => {
     // Check if the user is authenticated
@@ -52,8 +52,8 @@ const setCoachAvailability = asyncHandler(async (req, res) => {
     }
 
     const { _id } = req.user;
-    // FIX: Use 'unavailableSlots' to match the schema
-    const { timeZone, workingHours, unavailableSlots, slotDuration, bufferTime } = req.body;
+    // FIX: Use 'defaultAppointmentDuration' to match the schema field name
+    const { timeZone, workingHours, unavailableSlots, defaultAppointmentDuration, bufferTime } = req.body;
 
     if (!workingHours || !Array.isArray(workingHours)) {
         return res.status(400).json({
@@ -68,9 +68,8 @@ const setCoachAvailability = asyncHandler(async (req, res) => {
             {
                 timeZone,
                 workingHours,
-                // FIX: Use 'unavailableSlots' to match the schema
                 unavailableSlots,
-                defaultAppointmentDuration: slotDuration, // <-- This was a bug, the schema field is different
+                defaultAppointmentDuration, // <-- This is now correct
                 bufferTime,
             },
             { new: true, upsert: true, runValidators: true }
